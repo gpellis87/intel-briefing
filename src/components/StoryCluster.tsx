@@ -17,7 +17,7 @@ import { useBookmarks } from "@/context/BookmarkContext";
 interface StoryClusterProps {
   cluster: StoryClusterData;
   onPreview?: (article: EnrichedArticle) => void;
-  onMarkRead?: (id: string) => void;
+  onMarkRead?: (id: string, meta?: { title?: string; url?: string; source?: string }) => void;
   isRead?: (id: string) => boolean;
 }
 
@@ -145,7 +145,7 @@ export function StoryCluster({ cluster, onPreview, onMarkRead, isRead }: StoryCl
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-1.5 text-xs text-text-muted hover:text-accent-cyan transition-colors"
-                onClick={() => onMarkRead?.(lead.id)}
+                onClick={() => onMarkRead?.(lead.id, { title: lead.title, url: lead.url, source: lead.source.name })}
               >
                 <ExternalLink size={11} />
                 <span>{lead.sourceDomain}</span>
@@ -188,7 +188,7 @@ export function StoryCluster({ cluster, onPreview, onMarkRead, isRead }: StoryCl
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-sm text-text-primary hover:text-accent-cyan transition-colors line-clamp-1"
-                  onClick={() => onMarkRead?.(article.id)}
+                  onClick={() => onMarkRead?.(article.id, { title: article.title, url: article.url, source: article.source.name })}
                 >
                   {article.title}
                 </a>

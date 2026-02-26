@@ -15,7 +15,7 @@ import { useBookmarks } from "@/context/BookmarkContext";
 interface ArticlePreviewProps {
   article: EnrichedArticle | null;
   onClose: () => void;
-  onMarkRead?: (id: string) => void;
+  onMarkRead?: (id: string, meta?: { title?: string; url?: string; source?: string }) => void;
 }
 
 export function ArticlePreview({ article, onClose, onMarkRead }: ArticlePreviewProps) {
@@ -41,7 +41,11 @@ export function ArticlePreview({ article, onClose, onMarkRead }: ArticlePreviewP
   const recency = getRecencyBadge(article.publishedAt);
 
   const handleOpen = () => {
-    onMarkRead?.(article.id);
+    onMarkRead?.(article.id, {
+      title: article.title,
+      url: article.url,
+      source: article.source.name,
+    });
     window.open(article.url, "_blank", "noopener,noreferrer");
   };
 
@@ -165,7 +169,7 @@ export function ArticlePreview({ article, onClose, onMarkRead }: ArticlePreviewP
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-1.5 text-xs text-text-muted hover:text-accent-cyan transition-colors"
-            onClick={() => onMarkRead?.(article.id)}
+            onClick={() => onMarkRead?.(article.id, { title: article.title, url: article.url, source: article.source.name })}
           >
             <ExternalLink size={11} />
             <span>{article.sourceDomain}</span>

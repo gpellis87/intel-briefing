@@ -20,7 +20,7 @@ interface ArticleCardProps {
   article: EnrichedArticle;
   compact?: boolean;
   isRead?: boolean;
-  onMarkRead?: (id: string) => void;
+  onMarkRead?: (id: string, meta?: { title?: string; url?: string; source?: string }) => void;
   isFocused?: boolean;
   index?: number;
 }
@@ -39,7 +39,11 @@ export function ArticleCard({
   const recency = getRecencyBadge(article.publishedAt);
 
   const handleClick = () => {
-    onMarkRead?.(article.id);
+    onMarkRead?.(article.id, {
+      title: article.title,
+      url: article.url,
+      source: article.source.name,
+    });
   };
 
   const handleSave = (e: React.MouseEvent) => {

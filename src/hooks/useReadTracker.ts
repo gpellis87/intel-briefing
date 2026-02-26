@@ -91,6 +91,7 @@ export function useReadTracker() {
 
   const getHistory = useCallback(() => {
     return [...readMap.entries()]
+      .filter(([, entry]) => !!entry.title)
       .map(([id, entry]) => ({ id, ...entry }))
       .sort((a, b) => new Date(b.readAt).getTime() - new Date(a.readAt).getTime())
       .slice(0, 100);

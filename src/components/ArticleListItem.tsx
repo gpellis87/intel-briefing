@@ -11,7 +11,7 @@ import { useBookmarks } from "@/context/BookmarkContext";
 interface ArticleListItemProps {
   article: EnrichedArticle;
   isRead?: boolean;
-  onMarkRead?: (id: string) => void;
+  onMarkRead?: (id: string, meta?: { title?: string; url?: string; source?: string }) => void;
   onPreview?: (article: EnrichedArticle) => void;
   isFocused?: boolean;
   index?: number;
@@ -90,7 +90,11 @@ export function ArticleListItem({
           target="_blank"
           rel="noopener noreferrer"
           className="p-1.5 rounded-lg text-text-muted hover:text-accent-cyan transition-colors"
-          onClick={() => onMarkRead?.(article.id)}
+          onClick={() => onMarkRead?.(article.id, {
+            title: article.title,
+            url: article.url,
+            source: article.source.name,
+          })}
         >
           <ExternalLink size={12} />
         </a>

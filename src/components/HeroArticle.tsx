@@ -11,7 +11,7 @@ import { useBookmarks } from "@/context/BookmarkContext";
 
 interface HeroArticleProps {
   article: EnrichedArticle;
-  onMarkRead?: (id: string) => void;
+  onMarkRead?: (id: string, meta?: { title?: string; url?: string; source?: string }) => void;
   pinned?: boolean;
   onTogglePin?: () => void;
 }
@@ -23,7 +23,11 @@ export function HeroArticle({ article, onMarkRead, pinned, onTogglePin }: HeroAr
   const recency = getRecencyBadge(article.publishedAt);
 
   const handleClick = () => {
-    onMarkRead?.(article.id);
+    onMarkRead?.(article.id, {
+      title: article.title,
+      url: article.url,
+      source: article.source.name,
+    });
   };
 
   return (

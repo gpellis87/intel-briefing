@@ -11,13 +11,21 @@ import { LoadingState } from "./LoadingState";
 import { ThemePicker } from "./ThemePicker";
 import { SearchBar } from "./SearchBar";
 import { BiasFilter } from "./BiasFilter";
+import { TrendingTopics } from "./TrendingTopics";
+import { KeyboardShortcutsModal } from "./KeyboardShortcutsModal";
+import { useReadTracker } from "@/hooks/useReadTracker";
+import { useKeyboardNav } from "@/hooks/useKeyboardNav";
 import {
   ShieldCheck,
   RefreshCw,
   Crosshair,
   Layers,
   Bell,
-  Bookmark,
+  BookmarkCheck,
+  CheckCheck,
+  Eye,
+  EyeOff,
+  Keyboard,
 } from "lucide-react";
 import { useBookmarks } from "@/context/BookmarkContext";
 
@@ -31,6 +39,17 @@ type BiasFilterValue = "all" | BiasDirection;
 
 const AUTO_REFRESH_MS = 5 * 60 * 1000;
 
+const SPORTS_DOMAINS = new Set([
+  "espn.com", "cbssports.com", "sports.yahoo.com", "bleacherreport.com",
+  "foxsports.com", "nbcsports.com", "theathletic.com", "si.com",
+  "deadspin.com",
+]);
+
+function isSportsSource(article: EnrichedArticle): boolean {
+  return SPORTS_DOMAINS.has(article.sourceDomain) ||
+    article.source.name.toLowerCase().includes("sport");
+}
+
 export function Dashboard() {
   const [category, setCategory] = useState<NewsCategory>("general");
   const [data, setData] = useState<FeedData | null>(null);
@@ -40,8 +59,11 @@ export function Dashboard() {
   const [biasFilter, setBiasFilter] = useState<BiasFilterValue>("all");
   const [newArticleCount, setNewArticleCount] = useState(0);
   const [showBookmarks, setShowBookmarks] = useState(false);
+  const [hideRead, setHideRead] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
   const previousArticleIds = useRef<Set<string>>(new Set());
-  const { isBookmarked, count: bookmarkCount } = useBookmarks();
+  const { isBookmarked, toggleBookmark, getSavedArticles, count: bookmarkCount } = useBookmarks();
+  const { isRead, markRead, markAllRead } = useReadTracker();
 
   const fetchData = useCallback(
     async (silent = false) => {
@@ -101,11 +123,29 @@ export function Dashboard() {
   }, [fetchData]);
 
   const filteredArticles = useMemo(() => {
+    if (showBookmarks) {
+      let articles = getSavedArticles();
+
+      if (biasFilter !== "all") {
+        articles = articles.filter((a) => a.biasDirection === biasFilter);
+      }
+      if (search.trim()) {
+        const q = search.toLowerCase();
+        articles = articles.filter(
+          (a) =>
+            a.title.toLowerCase().includes(q) ||
+            a.source.name.toLowerCase().includes(q) ||
+            a.description?.toLowerCase().includes(q)
+        );
+      }
+      return articles;
+    }
+
     if (!data?.articles) return [];
     let articles = data.articles;
 
-    if (showBookmarks) {
-      articles = articles.filter((a) => isBookmarked(a.id));
+    if (hideRead) {
+      articles = articles.filter((a) => !isRead(a.id));
     }
 
     if (biasFilter !== "all") {
@@ -123,10 +163,55 @@ export function Dashboard() {
     }
 
     return articles;
-  }, [data, biasFilter, search, showBookmarks, isBookmarked]);
+  }, [data, biasFilter, search, showBookmarks, getSavedArticles, hideRead, isRead]);
 
-  const heroArticle = filteredArticles.length > 0 ? filteredArticles[0] : null;
-  const gridArticles = filteredArticles.length > 1 ? filteredArticles.slice(1) : [];
+  const heroArticle = useMemo(() => {
+    if (showBookmarks || filteredArticles.length === 0) return null;
+    if (category === "sports") return filteredArticles[0];
+    const nonSports = filteredArticles.find((a) => !isSportsSource(a));
+    return nonSports || filteredArticles[0];
+  }, [filteredArticles, showBookmarks, category]);
+
+  const gridArticles = useMemo(() => {
+    if (showBookmarks) return filteredArticles;
+    if (!heroArticle) return filteredArticles;
+    return filteredArticles.filter((a) => a.id !== heroArticle.id);
+  }, [filteredArticles, heroArticle, showBookmarks]);
+
+  const allTitles = useMemo(
+    () => (data?.articles || []).map((a) => a.title),
+    [data]
+  );
+
+  const handleOpenArticle = useCallback(
+    (article: EnrichedArticle) => {
+      markRead(article.id);
+      window.open(article.url, "_blank", "noopener,noreferrer");
+    },
+    [markRead]
+  );
+
+  const handleMarkAllRead = useCallback(() => {
+    if (data?.articles) {
+      markAllRead(data.articles.map((a) => a.id));
+    }
+  }, [data, markAllRead]);
+
+  const handleKeyboardBookmark = useCallback(
+    (id: string) => {
+      const article = gridArticles.find((a) => a.id === id);
+      if (article) toggleBookmark(article);
+    },
+    [gridArticles, toggleBookmark]
+  );
+
+  const { focusIndex } = useKeyboardNav({
+    articles: gridArticles,
+    onOpenArticle: handleOpenArticle,
+    onToggleBookmark: handleKeyboardBookmark,
+    onShowHelp: useCallback(() => setShowShortcuts(true), []),
+    enabled: !showShortcuts,
+  });
 
   return (
     <div className="min-h-screen bg-surface-primary transition-colors duration-300">
@@ -152,7 +237,7 @@ export function Dashboard() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 sm:gap-2">
               <SearchBar value={search} onChange={setSearch} />
 
               <button
@@ -162,15 +247,47 @@ export function Dashboard() {
                     ? "text-accent-cyan bg-accent-cyan/10 border-accent-cyan/25"
                     : "text-text-muted hover:text-accent-cyan hover:bg-surface-tertiary border-border-primary"
                 }`}
-                aria-label="Bookmarks"
+                aria-label="Saved articles"
+                title="View saved articles"
               >
-                <Bookmark size={13} fill={showBookmarks ? "currentColor" : "none"} />
-                {bookmarkCount > 0 && (
-                  <span className="hidden sm:inline">{bookmarkCount}</span>
-                )}
+                <BookmarkCheck size={13} fill={showBookmarks ? "currentColor" : "none"} />
+                <span className="hidden sm:inline">
+                  {bookmarkCount > 0 ? `Saved (${bookmarkCount})` : "Saved"}
+                </span>
+              </button>
+
+              <button
+                onClick={() => setHideRead(!hideRead)}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all border ${
+                  hideRead
+                    ? "text-accent-cyan bg-accent-cyan/10 border-accent-cyan/25"
+                    : "text-text-muted hover:text-accent-cyan hover:bg-surface-tertiary border-border-primary"
+                }`}
+                aria-label={hideRead ? "Show read articles" : "Hide read articles"}
+                title={hideRead ? "Show read articles" : "Hide read articles"}
+              >
+                {hideRead ? <EyeOff size={13} /> : <Eye size={13} />}
+              </button>
+
+              <button
+                onClick={handleMarkAllRead}
+                className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-text-muted hover:text-accent-cyan hover:bg-surface-tertiary transition-all border border-border-primary"
+                aria-label="Mark all read"
+                title="Mark all as read"
+              >
+                <CheckCheck size={13} />
               </button>
 
               <ThemePicker />
+
+              <button
+                onClick={() => setShowShortcuts(true)}
+                className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-text-muted hover:text-accent-cyan hover:bg-surface-tertiary transition-all border border-border-primary"
+                aria-label="Keyboard shortcuts"
+                title="Keyboard shortcuts"
+              >
+                <Keyboard size={13} />
+              </button>
 
               {lastUpdated && (
                 <span className="text-[10px] text-text-muted hidden lg:block">
@@ -205,6 +322,7 @@ export function Dashboard() {
               setShowBookmarks(false);
               setSearch("");
               setBiasFilter("all");
+              setHideRead(false);
             }}
           />
         </div>
@@ -229,22 +347,33 @@ export function Dashboard() {
       )}
 
       {/* Main content */}
-      <main className="max-w-[1600px] mx-auto px-4 sm:px-6 py-8 space-y-8">
+      <main className="max-w-[1600px] mx-auto px-4 sm:px-6 py-8 space-y-6">
         {/* Stats + Filters */}
-        {data && (
+        {data && !showBookmarks && (
           <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
             <StatsBar articles={data.articles || []} total={data.total} />
             <BiasFilter value={biasFilter} onChange={setBiasFilter} />
           </div>
         )}
 
+        {/* Trending Topics */}
+        {data && !showBookmarks && allTitles.length > 0 && (
+          <TrendingTopics
+            titles={allTitles}
+            onTopicClick={setSearch}
+            activeSearch={search}
+          />
+        )}
+
         {loading && <LoadingState />}
 
-        {!loading && data && (
+        {!loading && (
           <>
-            {heroArticle && !showBookmarks && <HeroArticle article={heroArticle} />}
+            {heroArticle && (
+              <HeroArticle article={heroArticle} onMarkRead={markRead} />
+            )}
 
-            {(showBookmarks ? filteredArticles : gridArticles).length > 0 && (
+            {gridArticles.length > 0 && (
               <section className="space-y-5">
                 <div className="flex items-center gap-2.5">
                   <Layers size={15} className="text-accent-cyan" />
@@ -252,15 +381,20 @@ export function Dashboard() {
                     {showBookmarks ? "Saved Articles" : "Latest Coverage"}
                   </h2>
                   <span className="text-xs text-text-muted">
-                    ({(showBookmarks ? filteredArticles : gridArticles).length})
+                    ({gridArticles.length})
                   </span>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 stagger-children">
-                  {(showBookmarks ? filteredArticles : gridArticles).map(
-                    (article) => (
-                      <ArticleCard key={article.id} article={article} />
-                    )
-                  )}
+                  {gridArticles.map((article, i) => (
+                    <ArticleCard
+                      key={article.id}
+                      article={article}
+                      isRead={isRead(article.id)}
+                      onMarkRead={markRead}
+                      isFocused={focusIndex === i}
+                      index={i}
+                    />
+                  ))}
                 </div>
               </section>
             )}
@@ -271,16 +405,20 @@ export function Dashboard() {
                 <p className="text-lg font-medium text-text-secondary">
                   {showBookmarks
                     ? "No saved articles yet"
-                    : search
-                      ? "No articles match your search"
-                      : "No intelligence data available"}
+                    : hideRead
+                      ? "All articles have been read"
+                      : search
+                        ? "No articles match your search"
+                        : "No intelligence data available"}
                 </p>
                 <p className="text-sm mt-2">
                   {showBookmarks
-                    ? "Bookmark articles to save them for later"
-                    : search
-                      ? "Try a different search term"
-                      : "Try refreshing or selecting a different category"}
+                    ? "Click the Save button on any article to keep it here permanently"
+                    : hideRead
+                      ? "Toggle the eye icon to show read articles"
+                      : search
+                        ? "Try a different search term"
+                        : "Try refreshing or selecting a different category"}
                 </p>
               </div>
             )}
@@ -302,10 +440,23 @@ export function Dashboard() {
             </div>
             <div className="flex items-center gap-4">
               <span>Read broadly. Think critically.</span>
+              <button
+                onClick={() => setShowShortcuts(true)}
+                className="hidden sm:inline-flex items-center gap-1 text-text-muted hover:text-accent-cyan transition-colors"
+              >
+                <Keyboard size={11} />
+                <span>Shortcuts</span>
+              </button>
             </div>
           </div>
         </div>
       </footer>
+
+      {/* Keyboard shortcuts modal */}
+      <KeyboardShortcutsModal
+        open={showShortcuts}
+        onClose={() => setShowShortcuts(false)}
+      />
     </div>
   );
 }

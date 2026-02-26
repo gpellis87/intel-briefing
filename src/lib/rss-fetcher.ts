@@ -83,7 +83,7 @@ async function fetchSingleFeed(
 
     const articles: NewsArticle[] = [];
 
-    for (const item of feed.items.slice(0, 10)) {
+    for (const item of feed.items.slice(0, 15)) {
       const title = item.title || "";
       const url = item.link || "";
 

@@ -3,18 +3,26 @@
 import type { EnrichedArticle } from "@/types";
 import { BiasBadge } from "./BiasBadge";
 import { ReliabilityMeter } from "./ReliabilityMeter";
-import { getBiasBorderColor, timeAgo } from "@/lib/utils";
-import { ExternalLink, Clock, Flame, Bookmark } from "lucide-react";
+import { NewsBadge } from "./NewsBadge";
+import { ShareButton } from "./ShareButton";
+import { getBiasBorderColor, timeAgo, getRecencyBadge } from "@/lib/utils";
+import { ExternalLink, Clock, Flame, BookmarkPlus, BookmarkCheck } from "lucide-react";
 import { useBookmarks } from "@/context/BookmarkContext";
 
 interface HeroArticleProps {
   article: EnrichedArticle;
+  onMarkRead?: (id: string) => void;
 }
 
-export function HeroArticle({ article }: HeroArticleProps) {
+export function HeroArticle({ article, onMarkRead }: HeroArticleProps) {
   const borderColor = getBiasBorderColor(article.bias);
   const { toggleBookmark, isBookmarked } = useBookmarks();
   const saved = isBookmarked(article.id);
+  const recency = getRecencyBadge(article.publishedAt);
+
+  const handleClick = () => {
+    onMarkRead?.(article.id);
+  };
 
   return (
     <div
@@ -44,21 +52,39 @@ export function HeroArticle({ article }: HeroArticleProps) {
                 Top Story
               </span>
             </div>
+            {recency && <NewsBadge badge={recency} />}
             <div className="flex items-center gap-1 text-text-muted">
               <Clock size={12} />
               <span className="text-xs">{timeAgo(article.publishedAt)}</span>
             </div>
-            <button
-              onClick={() => toggleBookmark(article.id)}
-              className={`ml-auto p-1.5 rounded-lg transition-all ${
-                saved
-                  ? "text-accent-cyan bg-accent-cyan/10"
-                  : "text-text-muted hover:text-text-primary hover:bg-surface-tertiary"
-              }`}
-              aria-label={saved ? "Remove bookmark" : "Bookmark article"}
-            >
-              <Bookmark size={16} fill={saved ? "currentColor" : "none"} />
-            </button>
+            <div className="ml-auto flex items-center gap-1.5">
+              <ShareButton
+                url={article.url}
+                title={article.title}
+                source={article.source.name}
+                size="md"
+              />
+              <button
+                onClick={() => toggleBookmark(article)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  saved
+                    ? "text-accent-cyan bg-accent-cyan/10 border border-accent-cyan/25"
+                    : "text-text-muted hover:text-text-primary hover:bg-surface-tertiary border border-border-primary"
+                }`}
+              >
+                {saved ? (
+                  <>
+                    <BookmarkCheck size={14} fill="currentColor" />
+                    <span>Saved</span>
+                  </>
+                ) : (
+                  <>
+                    <BookmarkPlus size={14} />
+                    <span>Save Article</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
 
           <div className="flex items-center gap-3 flex-wrap">
@@ -77,6 +103,7 @@ export function HeroArticle({ article }: HeroArticleProps) {
             target="_blank"
             rel="noopener noreferrer"
             className="group/link"
+            onClick={handleClick}
           >
             <h2 className="text-xl sm:text-2xl lg:text-[28px] font-bold text-text-primary leading-snug group-hover/link:text-accent-cyan transition-colors">
               {article.title}
@@ -94,6 +121,7 @@ export function HeroArticle({ article }: HeroArticleProps) {
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 text-sm text-text-muted hover:text-accent-cyan transition-colors mt-1"
+            onClick={handleClick}
           >
             <ExternalLink size={14} />
             <span>Read full article on {article.sourceDomain}</span>

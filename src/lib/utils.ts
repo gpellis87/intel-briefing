@@ -124,6 +124,16 @@ export function formatPublishTime(dateString: string): string {
   });
 }
 
+export type RecencyBadge = "breaking" | "just-in" | null;
+
+export function getRecencyBadge(publishedAt: string): RecencyBadge {
+  const ageMs = Date.now() - new Date(publishedAt).getTime();
+  if (isNaN(ageMs) || ageMs < 0) return null;
+  if (ageMs < 60 * 60 * 1000) return "breaking";
+  if (ageMs < 3 * 60 * 60 * 1000) return "just-in";
+  return null;
+}
+
 export function generateArticleId(article: {
   title: string;
   url: string;

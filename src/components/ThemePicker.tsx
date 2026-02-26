@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useTheme, themes } from "@/context/ThemeContext";
-import { Palette, Check } from "lucide-react";
+import { Palette, Check, Monitor } from "lucide-react";
 
 export function ThemePicker() {
   const { theme, setTheme } = useTheme();
@@ -25,11 +25,10 @@ export function ThemePicker() {
         aria-label="Change theme"
       >
         <Palette size={13} />
-        <span className="hidden sm:inline">Theme</span>
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-44 bg-surface-secondary border border-border-primary rounded-xl shadow-xl overflow-hidden animate-slide-down z-50">
+        <div className="absolute right-0 top-full mt-2 w-48 bg-surface-secondary border border-border-primary rounded-xl shadow-xl overflow-hidden animate-slide-down z-50">
           <div className="p-1.5">
             {themes.map((t) => (
               <button
@@ -40,10 +39,14 @@ export function ThemePicker() {
                 }}
                 className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors hover:bg-surface-hover"
               >
-                <span
-                  className="w-5 h-5 rounded-full border-2 border-border-secondary flex-shrink-0"
-                  style={{ backgroundColor: t.preview }}
-                />
+                {t.name === "system" ? (
+                  <Monitor size={16} className="text-text-muted flex-shrink-0" />
+                ) : (
+                  <span
+                    className="w-5 h-5 rounded-full border-2 border-border-secondary flex-shrink-0"
+                    style={{ backgroundColor: t.preview }}
+                  />
+                )}
                 <span className="text-text-primary font-medium">{t.label}</span>
                 {theme === t.name && (
                   <Check size={14} className="ml-auto text-accent-cyan" />

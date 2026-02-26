@@ -14,7 +14,7 @@ import { DensityPicker } from "./DensityPicker";
 import { SearchBar } from "./SearchBar";
 import { BiasFilter } from "./BiasFilter";
 import { TimeFilter, passesTimeFilter, type TimeRange } from "./TimeFilter";
-import { ViewToggle, useViewMode, type ViewMode } from "./ViewToggle";
+import { ViewToggle, useViewMode } from "./ViewToggle";
 import { TrendingTopics } from "./TrendingTopics";
 import { KeyboardShortcutsModal } from "./KeyboardShortcutsModal";
 import { BackToTop } from "./BackToTop";
@@ -23,15 +23,26 @@ import { SourceDirectory, useSourceFilter } from "./SourceDirectory";
 import { StoryCluster } from "./StoryCluster";
 import { DailyDigest } from "./DailyDigest";
 import { LocalNewsPrompt, LocationBadge, useLocalLocation } from "./LocalNews";
+import { ScoresTicker } from "./ScoresTicker";
+import { MarketTicker } from "./MarketTicker";
+import { WeatherWidget } from "./WeatherWidget";
+import { WelcomeBanner } from "./WelcomeBanner";
+import { Tooltip } from "./Tooltip";
+import { KeywordAlerts } from "./KeywordAlerts";
+import { ReadingHistory } from "./ReadingHistory";
+import { PopularBadge } from "./PopularBadge";
 import { clusterArticles, type StoryClusterData } from "@/lib/story-clustering";
 import { useReadTracker } from "@/hooks/useReadTracker";
 import { useKeyboardNav } from "@/hooks/useKeyboardNav";
+import { useKeywordAlerts } from "@/hooks/useKeywordAlerts";
 import {
   ShieldCheck, RefreshCw, Crosshair, Layers, Bell,
   BookmarkCheck, CheckCheck, Eye, EyeOff, Keyboard,
-  Filter, Newspaper, ChevronDown,
+  Filter, Newspaper, ChevronDown, Radar, History,
+  BarChart3,
 } from "lucide-react";
 import { useBookmarks } from "@/context/BookmarkContext";
+import Link from "next/link";
 
 interface FeedData {
   articles: EnrichedArticle[];
@@ -43,6 +54,7 @@ type BiasFilterValue = "all" | BiasDirection;
 
 const AUTO_REFRESH_MS = 5 * 60 * 1000;
 const PAGE_SIZE = 20;
+const HERO_PERSIST_MS = 30 * 60 * 1000;
 
 const SPORTS_DOMAINS = new Set([
   "espn.com", "cbssports.com", "sports.yahoo.com", "bleacherreport.com",
@@ -69,16 +81,48 @@ export function Dashboard() {
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showSources, setShowSources] = useState(false);
   const [showDigest, setShowDigest] = useState(false);
+  const [showAlerts, setShowAlerts] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const [clustered, setClustered] = useState(false);
   const [previewArticle, setPreviewArticle] = useState<EnrichedArticle | null>(null);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const [pinnedHeroId, setPinnedHeroId] = useState<string | null>(null);
+  const [popularIds, setPopularIds] = useState<Set<string>>(new Set());
   const previousArticleIds = useRef<Set<string>>(new Set());
+  const heroRef = useRef<{ id: string; setAt: number } | null>(null);
 
   const { viewMode, setViewMode } = useViewMode();
   const { isBookmarked, toggleBookmark, getSavedArticles, count: bookmarkCount } = useBookmarks();
-  const { isRead, markRead, markAllRead } = useReadTracker();
+  const { isRead, markRead, markAllRead, getHistory } = useReadTracker();
   const { excluded, toggleSource, clearAll: clearSourceFilter, excludedCount, isExcluded } = useSourceFilter();
   const { location, setLocation } = useLocalLocation();
+  const { keywords, addKeyword, removeKeyword, matchesAlert, count: alertCount } = useKeywordAlerts();
+
+  // Fetch popular articles for boosting
+  useEffect(() => {
+    const fetchPopular = async () => {
+      try {
+        const res = await fetch("/api/popular");
+        const data = await res.json();
+        if (data.popular?.length > 0) {
+          setPopularIds(new Set(data.popular.map((p: { articleId: string }) => p.articleId)));
+        }
+      } catch { /* silent */ }
+    };
+    fetchPopular();
+    const interval = setInterval(fetchPopular, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const trackClick = useCallback(async (articleId: string) => {
+    try {
+      await fetch("/api/track", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ articleId, action: "click", category }),
+      });
+    } catch { /* non-blocking */ }
+  }, [category]);
 
   const fetchData = useCallback(
     async (silent = false) => {
@@ -157,6 +201,19 @@ export function Dashboard() {
     setVisibleCount(PAGE_SIZE);
   }, [category, biasFilter, search, timeFilter, showBookmarks, hideRead, clustered]);
 
+  // Compute source counts for articles (for breaking badge)
+  const sourceCountMap = useMemo(() => {
+    if (!data?.articles) return new Map<string, number>();
+    const clusters = clusterArticles(data.articles);
+    const map = new Map<string, number>();
+    for (const cluster of clusters) {
+      for (const article of cluster.articles) {
+        map.set(article.id, cluster.articles.length);
+      }
+    }
+    return map;
+  }, [data]);
+
   const filteredArticles = useMemo(() => {
     let articles: EnrichedArticle[];
 
@@ -197,12 +254,41 @@ export function Dashboard() {
     return articles;
   }, [data, biasFilter, search, showBookmarks, getSavedArticles, hideRead, isRead, timeFilter, excludedCount, isExcluded]);
 
+  // Hero article with 30-min persistence + pin support
   const heroArticle = useMemo(() => {
     if (showBookmarks || filteredArticles.length === 0 || clustered) return null;
-    if (category === "sports") return filteredArticles[0];
-    const nonSports = filteredArticles.find((a) => !isSportsSource(a));
-    return nonSports || filteredArticles[0];
-  }, [filteredArticles, showBookmarks, category, clustered]);
+
+    // If pinned, find that article
+    if (pinnedHeroId) {
+      const pinned = filteredArticles.find((a) => a.id === pinnedHeroId);
+      if (pinned) return pinned;
+      setPinnedHeroId(null);
+    }
+
+    // Check if current hero is still valid and within persistence window
+    if (heroRef.current) {
+      const elapsed = Date.now() - heroRef.current.setAt;
+      const currentHero = filteredArticles.find((a) => a.id === heroRef.current!.id);
+      if (currentHero && elapsed < HERO_PERSIST_MS) {
+        // Only override if a new story has 3+ sources (truly bigger news)
+        const candidate = category === "sports"
+          ? filteredArticles[0]
+          : filteredArticles.find((a) => !isSportsSource(a)) || filteredArticles[0];
+        const candidateSources = sourceCountMap.get(candidate?.id || "") || 0;
+        if (candidateSources < 3) return currentHero;
+      }
+    }
+
+    const selected = category === "sports"
+      ? filteredArticles[0]
+      : filteredArticles.find((a) => !isSportsSource(a)) || filteredArticles[0];
+
+    if (selected) {
+      heroRef.current = { id: selected.id, setAt: Date.now() };
+    }
+
+    return selected || null;
+  }, [filteredArticles, showBookmarks, category, clustered, pinnedHeroId, sourceCountMap]);
 
   const afterHeroArticles = useMemo(() => {
     if (showBookmarks) return filteredArticles;
@@ -221,17 +307,22 @@ export function Dashboard() {
 
   const hasMore = afterHeroArticles.length > visibleCount;
 
-  const allTitles = useMemo(
-    () => (data?.articles || []).map((a) => a.title),
+  const trendingArticles = useMemo(
+    () => (data?.articles || []).map((a) => ({ title: a.title, publishedAt: a.publishedAt })),
     [data]
   );
 
   const handleOpenArticle = useCallback(
     (article: EnrichedArticle) => {
-      markRead(article.id);
+      markRead(article.id, {
+        title: article.title,
+        url: article.url,
+        source: article.source.name,
+      });
+      trackClick(article.id);
       window.open(article.url, "_blank", "noopener,noreferrer");
     },
-    [markRead]
+    [markRead, trackClick]
   );
 
   const handleMarkAllRead = useCallback(() => {
@@ -253,10 +344,15 @@ export function Dashboard() {
     onOpenArticle: handleOpenArticle,
     onToggleBookmark: handleKeyboardBookmark,
     onShowHelp: useCallback(() => setShowShortcuts(true), []),
-    enabled: !showShortcuts && !previewArticle && !showSources && !showDigest,
+    enabled: !showShortcuts && !previewArticle && !showSources && !showDigest && !showAlerts && !showHistory,
   });
 
   const showLocalPrompt = category === "local" && !location;
+  const history = getHistory();
+
+  const Divider = () => (
+    <div className="h-5 border-l border-border-primary mx-0.5 hidden sm:block" />
+  );
 
   return (
     <div className="min-h-screen bg-surface-primary transition-colors duration-300">
@@ -287,82 +383,125 @@ export function Dashboard() {
                   onEdit={() => setLocation(null)}
                 />
               )}
+              <WeatherWidget />
             </div>
 
-            <div className="flex items-center gap-1.5 sm:gap-2">
+            <div className="flex items-center gap-1 sm:gap-1.5">
               <SearchBar value={search} onChange={setSearch} />
 
-              <button
-                onClick={() => setShowBookmarks(!showBookmarks)}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all border ${
-                  showBookmarks
-                    ? "text-accent-cyan bg-accent-cyan/10 border-accent-cyan/25"
-                    : "text-text-muted hover:text-accent-cyan hover:bg-surface-tertiary border-border-primary"
-                }`}
-                title="View saved articles"
-              >
-                <BookmarkCheck size={13} fill={showBookmarks ? "currentColor" : "none"} />
-                <span className="hidden sm:inline">
-                  {bookmarkCount > 0 ? `Saved (${bookmarkCount})` : "Saved"}
-                </span>
-              </button>
+              {/* Reading group */}
+              <Tooltip text="View saved articles">
+                <button
+                  onClick={() => setShowBookmarks(!showBookmarks)}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all border ${
+                    showBookmarks
+                      ? "text-accent-cyan bg-accent-cyan/10 border-accent-cyan/25"
+                      : "text-text-muted hover:text-accent-cyan hover:bg-surface-tertiary border-border-primary"
+                  }`}
+                >
+                  <BookmarkCheck size={13} fill={showBookmarks ? "currentColor" : "none"} />
+                  <span className="hidden sm:inline">
+                    {bookmarkCount > 0 ? `Saved (${bookmarkCount})` : "Saved"}
+                  </span>
+                </button>
+              </Tooltip>
 
-              <button
-                onClick={() => setHideRead(!hideRead)}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all border ${
-                  hideRead
-                    ? "text-accent-cyan bg-accent-cyan/10 border-accent-cyan/25"
-                    : "text-text-muted hover:text-accent-cyan hover:bg-surface-tertiary border-border-primary"
-                }`}
-                title={hideRead ? "Show read articles" : "Hide read articles"}
-              >
-                {hideRead ? <EyeOff size={13} /> : <Eye size={13} />}
-              </button>
+              <Tooltip text="Reading history">
+                <button
+                  onClick={() => setShowHistory(true)}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-text-muted hover:text-accent-cyan hover:bg-surface-tertiary transition-all border border-border-primary"
+                >
+                  <History size={13} />
+                  <span className="hidden lg:inline">History</span>
+                </button>
+              </Tooltip>
 
-              <button
-                onClick={handleMarkAllRead}
-                className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-text-muted hover:text-accent-cyan hover:bg-surface-tertiary transition-all border border-border-primary"
-                title="Mark all as read"
-              >
-                <CheckCheck size={13} />
-              </button>
+              <Tooltip text={hideRead ? "Show read articles" : "Hide articles you've read"}>
+                <button
+                  onClick={() => setHideRead(!hideRead)}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all border ${
+                    hideRead
+                      ? "text-accent-cyan bg-accent-cyan/10 border-accent-cyan/25"
+                      : "text-text-muted hover:text-accent-cyan hover:bg-surface-tertiary border-border-primary"
+                  }`}
+                >
+                  {hideRead ? <EyeOff size={13} /> : <Eye size={13} />}
+                  <span className="hidden sm:inline">{hideRead ? "Show Read" : "Hide Read"}</span>
+                </button>
+              </Tooltip>
 
-              <button
-                onClick={() => setShowSources(true)}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all border ${
-                  excludedCount > 0
-                    ? "text-accent-cyan bg-accent-cyan/10 border-accent-cyan/25"
-                    : "text-text-muted hover:text-accent-cyan hover:bg-surface-tertiary border-border-primary"
-                }`}
-                title="Source filter"
-              >
-                <Filter size={13} />
-                {excludedCount > 0 && (
-                  <span className="hidden sm:inline text-[10px]">{excludedCount}</span>
-                )}
-              </button>
+              <Tooltip text="Mark all articles as read">
+                <button
+                  onClick={handleMarkAllRead}
+                  className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-text-muted hover:text-accent-cyan hover:bg-surface-tertiary transition-all border border-border-primary"
+                >
+                  <CheckCheck size={13} />
+                  <span className="hidden md:inline">Mark Read</span>
+                </button>
+              </Tooltip>
 
-              <button
-                onClick={() => setShowDigest(true)}
-                className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-text-muted hover:text-accent-cyan hover:bg-surface-tertiary transition-all border border-border-primary"
-                title="Daily briefing"
-              >
-                <Newspaper size={13} />
-              </button>
+              <Divider />
+
+              {/* Filter group */}
+              <Tooltip text="Filter which news sources appear">
+                <button
+                  onClick={() => setShowSources(true)}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all border ${
+                    excludedCount > 0
+                      ? "text-accent-cyan bg-accent-cyan/10 border-accent-cyan/25"
+                      : "text-text-muted hover:text-accent-cyan hover:bg-surface-tertiary border-border-primary"
+                  }`}
+                >
+                  <Filter size={13} />
+                  <span className="hidden sm:inline">
+                    Sources{excludedCount > 0 ? ` (${excludedCount})` : ""}
+                  </span>
+                </button>
+              </Tooltip>
+
+              <Tooltip text="Set keyword alerts for topics you care about">
+                <button
+                  onClick={() => setShowAlerts(true)}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all border ${
+                    alertCount > 0
+                      ? "text-amber-400 bg-amber-500/10 border-amber-500/25"
+                      : "text-text-muted hover:text-accent-cyan hover:bg-surface-tertiary border-border-primary"
+                  }`}
+                >
+                  <Radar size={13} />
+                  <span className="hidden lg:inline">
+                    Alerts{alertCount > 0 ? ` (${alertCount})` : ""}
+                  </span>
+                </button>
+              </Tooltip>
 
               <DensityPicker />
               <ThemePicker />
 
-              <button
-                onClick={() => setShowShortcuts(true)}
-                className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-text-muted hover:text-accent-cyan hover:bg-surface-tertiary transition-all border border-border-primary"
-                title="Keyboard shortcuts"
-              >
-                <Keyboard size={13} />
-              </button>
+              <Divider />
+
+              {/* Extras group */}
+              <Tooltip text="Summary across all categories">
+                <button
+                  onClick={() => setShowDigest(true)}
+                  className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-text-muted hover:text-accent-cyan hover:bg-surface-tertiary transition-all border border-border-primary"
+                >
+                  <Newspaper size={13} />
+                  <span className="hidden lg:inline">Briefing</span>
+                </button>
+              </Tooltip>
+
+              <Tooltip text="Keyboard shortcuts">
+                <button
+                  onClick={() => setShowShortcuts(true)}
+                  className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-text-muted hover:text-accent-cyan hover:bg-surface-tertiary transition-all border border-border-primary"
+                >
+                  <Keyboard size={13} />
+                </button>
+              </Tooltip>
 
               {lastUpdated && (
-                <span className="text-[10px] text-text-muted hidden lg:block">
+                <span className="text-[10px] text-text-muted hidden xl:block">
                   {lastUpdated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                 </span>
               )}
@@ -391,6 +530,8 @@ export function Dashboard() {
               setTimeFilter("all");
               setHideRead(false);
               setClustered(false);
+              setPinnedHeroId(null);
+              heroRef.current = null;
             }}
           />
         </div>
@@ -409,13 +550,22 @@ export function Dashboard() {
         </div>
       )}
 
-      {/* Ticker */}
+      {/* Market Ticker */}
+      <MarketTicker />
+
+      {/* Scores Ticker */}
+      <ScoresTicker />
+
+      {/* News Ticker */}
       {data?.articles && data.articles.length > 0 && !showBookmarks && !showLocalPrompt && (
         <TickerBar articles={data.articles} />
       )}
 
       {/* Main content */}
       <main className="max-w-[1600px] mx-auto px-4 sm:px-6 py-8 space-y-6">
+        {/* Welcome Banner */}
+        <WelcomeBanner />
+
         {/* Local News Prompt */}
         {showLocalPrompt && (
           <LocalNewsPrompt onLocationSet={setLocation} />
@@ -439,15 +589,15 @@ export function Dashboard() {
                 title={clustered ? "Show all articles" : "Group related stories"}
               >
                 <Layers size={12} />
-                <span className="hidden sm:inline">Cluster</span>
+                <span className="hidden sm:inline">Group Stories</span>
               </button>
             </div>
           </div>
         )}
 
         {/* Trending Topics */}
-        {data && !showBookmarks && !showLocalPrompt && allTitles.length > 0 && (
-          <TrendingTopics titles={allTitles} onTopicClick={setSearch} activeSearch={search} />
+        {data && !showBookmarks && !showLocalPrompt && trendingArticles.length > 0 && (
+          <TrendingTopics articles={trendingArticles} onTopicClick={setSearch} activeSearch={search} />
         )}
 
         {loading && <LoadingState />}
@@ -455,11 +605,26 @@ export function Dashboard() {
         {!loading && !showLocalPrompt && (
           <>
             {heroArticle && (
-              <HeroArticle article={heroArticle} onMarkRead={markRead} />
+              <HeroArticle
+                article={heroArticle}
+                onMarkRead={(id) => {
+                  markRead(id, {
+                    title: heroArticle.title,
+                    url: heroArticle.url,
+                    source: heroArticle.source.name,
+                  });
+                  trackClick(id);
+                }}
+                pinned={pinnedHeroId === heroArticle.id}
+                onTogglePin={() =>
+                  setPinnedHeroId((prev) =>
+                    prev === heroArticle.id ? null : heroArticle.id
+                  )
+                }
+              />
             )}
 
             {clustered ? (
-              /* Clustered view */
               clusters.length > 0 && (
                 <section className="space-y-5">
                   <div className="flex items-center gap-2.5">
@@ -496,7 +661,6 @@ export function Dashboard() {
                 </section>
               )
             ) : (
-              /* Standard view */
               paginatedArticles.length > 0 && (
                 <section className="space-y-5">
                   <div className="flex items-center gap-2.5">
@@ -511,16 +675,20 @@ export function Dashboard() {
 
                   {viewMode === "grid" ? (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 stagger-children">
-                      {paginatedArticles.map((article, i) => (
-                        <ArticleCard
-                          key={article.id}
-                          article={article}
-                          isRead={isRead(article.id)}
-                          onMarkRead={markRead}
-                          isFocused={focusIndex === i}
-                          index={i}
-                        />
-                      ))}
+                      {paginatedArticles.map((article, i) => {
+                        const alertMatch = matchesAlert(article.title);
+                        return (
+                          <div key={article.id} className={alertMatch ? "ring-2 ring-amber-400/40 rounded-2xl" : ""}>
+                            <ArticleCard
+                              article={article}
+                              isRead={isRead(article.id)}
+                              onMarkRead={markRead}
+                              isFocused={focusIndex === i}
+                              index={i}
+                            />
+                          </div>
+                        );
+                      })}
                     </div>
                   ) : viewMode === "list" ? (
                     <div className="space-y-1 stagger-children">
@@ -574,20 +742,24 @@ export function Dashboard() {
                 <p className="text-lg font-medium text-text-secondary">
                   {showBookmarks
                     ? "No saved articles yet"
-                    : hideRead
-                      ? "All articles have been read"
-                      : search
-                        ? "No articles match your search"
-                        : "No intelligence data available"}
+                    : category === "local"
+                      ? `No local news found for ${location?.city || "your area"}`
+                      : hideRead
+                        ? "All articles have been read"
+                        : search
+                          ? "No articles match your search"
+                          : "No intelligence data available"}
                 </p>
                 <p className="text-sm mt-2">
                   {showBookmarks
                     ? "Click the Save button on any article to keep it here permanently"
-                    : hideRead
-                      ? "Toggle the eye icon to show read articles"
-                      : search
-                        ? "Try a different search term"
-                        : "Try refreshing or selecting a different category"}
+                    : category === "local"
+                      ? "Try a different location or check back later"
+                      : hideRead
+                        ? "Toggle Hide Read to show all articles"
+                        : search
+                          ? "Try a different search term"
+                          : "Try refreshing or selecting a different category"}
                 </p>
               </div>
             )}
@@ -609,6 +781,13 @@ export function Dashboard() {
             </div>
             <div className="flex items-center gap-4">
               <span>Read broadly. Think critically.</span>
+              <Link
+                href="/analytics"
+                className="inline-flex items-center gap-1 text-text-muted hover:text-accent-cyan transition-colors"
+              >
+                <BarChart3 size={11} />
+                <span>Analytics</span>
+              </Link>
               <button
                 onClick={() => setShowShortcuts(true)}
                 className="hidden sm:inline-flex items-center gap-1 text-text-muted hover:text-accent-cyan transition-colors"
@@ -636,6 +815,18 @@ export function Dashboard() {
         }}
       />
       <DailyDigest open={showDigest} onClose={() => setShowDigest(false)} />
+      <KeywordAlerts
+        open={showAlerts}
+        onClose={() => setShowAlerts(false)}
+        keywords={keywords}
+        onAdd={addKeyword}
+        onRemove={removeKeyword}
+      />
+      <ReadingHistory
+        open={showHistory}
+        onClose={() => setShowHistory(false)}
+        history={history}
+      />
       <KeyboardShortcutsModal open={showShortcuts} onClose={() => setShowShortcuts(false)} />
     </div>
   );

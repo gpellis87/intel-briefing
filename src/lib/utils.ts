@@ -131,13 +131,17 @@ export function estimateReadTime(text: string | null): string {
   return `${minutes} min`;
 }
 
-export type RecencyBadge = "breaking" | "just-in" | null;
+export type RecencyBadge = "breaking" | "just-in" | "new" | null;
 
-export function getRecencyBadge(publishedAt: string): RecencyBadge {
+export function getRecencyBadge(
+  publishedAt: string,
+  sourceCount?: number
+): RecencyBadge {
   const ageMs = Date.now() - new Date(publishedAt).getTime();
   if (isNaN(ageMs) || ageMs < 0) return null;
-  if (ageMs < 60 * 60 * 1000) return "breaking";
-  if (ageMs < 3 * 60 * 60 * 1000) return "just-in";
+  if ((sourceCount ?? 0) >= 3 && ageMs < 2 * 60 * 60 * 1000) return "breaking";
+  if (ageMs < 30 * 60 * 1000) return "just-in";
+  if (ageMs < 2 * 60 * 60 * 1000) return "new";
   return null;
 }
 

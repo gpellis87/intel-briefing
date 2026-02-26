@@ -20,11 +20,30 @@ const STOP_WORDS = new Set([
   "down","right","left","think","good","long","great","old","three","four","five",
 ]);
 
-function extractTopics(titles: string[], maxTopics: number = 10): string[] {
-  const freq = new Map<string, number>();
+interface TopicData {
+  topic: string;
+  count: number;
+}
 
-  for (const title of titles) {
-    const words = title
+function getRecencyWeight(publishedAt: string): number {
+  const ageMs = Date.now() - new Date(publishedAt).getTime();
+  if (isNaN(ageMs) || ageMs < 0) return 1;
+  if (ageMs < 60 * 60 * 1000) return 3;
+  if (ageMs < 3 * 60 * 60 * 1000) return 2;
+  if (ageMs < 6 * 60 * 60 * 1000) return 1.5;
+  return 1;
+}
+
+function extractTopics(
+  articles: { title: string; publishedAt: string }[],
+  maxTopics: number = 10
+): TopicData[] {
+  const freq = new Map<string, number>();
+  const rawCount = new Map<string, number>();
+
+  for (const article of articles) {
+    const weight = getRecencyWeight(article.publishedAt);
+    const words = article.title
       .toLowerCase()
       .replace(/[^a-z0-9\s'-]/g, "")
       .split(/\s+/)
@@ -34,7 +53,8 @@ function extractTopics(titles: string[], maxTopics: number = 10): string[] {
     for (const word of words) {
       if (!seen.has(word)) {
         seen.add(word);
-        freq.set(word, (freq.get(word) || 0) + 1);
+        freq.set(word, (freq.get(word) || 0) + weight);
+        rawCount.set(word, (rawCount.get(word) || 0) + 1);
       }
     }
 
@@ -42,29 +62,33 @@ function extractTopics(titles: string[], maxTopics: number = 10): string[] {
       const bigram = `${words[i]} ${words[i + 1]}`;
       if (!seen.has(bigram)) {
         seen.add(bigram);
-        freq.set(bigram, (freq.get(bigram) || 0) + 1);
+        freq.set(bigram, (freq.get(bigram) || 0) + weight);
+        rawCount.set(bigram, (rawCount.get(bigram) || 0) + 1);
       }
     }
   }
 
   return [...freq.entries()]
-    .filter(([, count]) => count >= 2)
+    .filter(([key]) => (rawCount.get(key) || 0) >= 2)
     .sort((a, b) => {
       const bigramBonus = (s: string) => (s.includes(" ") ? 1.5 : 1);
       return b[1] * bigramBonus(b[0]) - a[1] * bigramBonus(a[0]);
     })
     .slice(0, maxTopics)
-    .map(([word]) => word);
+    .map(([topic, _score]) => ({
+      topic,
+      count: rawCount.get(topic) || 0,
+    }));
 }
 
 interface TrendingTopicsProps {
-  titles: string[];
+  articles: { title: string; publishedAt: string }[];
   onTopicClick: (topic: string) => void;
   activeSearch: string;
 }
 
-export function TrendingTopics({ titles, onTopicClick, activeSearch }: TrendingTopicsProps) {
-  const topics = useMemo(() => extractTopics(titles), [titles]);
+export function TrendingTopics({ articles, onTopicClick, activeSearch }: TrendingTopicsProps) {
+  const topics = useMemo(() => extractTopics(articles), [articles]);
 
   if (topics.length === 0) return null;
 
@@ -75,19 +99,22 @@ export function TrendingTopics({ titles, onTopicClick, activeSearch }: TrendingT
         <span className="text-[11px] font-semibold uppercase tracking-wider">Trending</span>
       </div>
       <div className="flex items-center gap-2">
-        {topics.map((topic) => {
+        {topics.map(({ topic, count }) => {
           const isActive = activeSearch.toLowerCase() === topic.toLowerCase();
           return (
             <button
               key={topic}
               onClick={() => onTopicClick(isActive ? "" : topic)}
-              className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-all ${
                 isActive
                   ? "bg-accent-cyan/15 text-accent-cyan border border-accent-cyan/25"
                   : "bg-surface-tertiary text-text-secondary hover:text-text-primary hover:bg-surface-elevated border border-transparent"
               }`}
             >
-              {topic}
+              <span>{topic}</span>
+              <span className={`text-[9px] font-bold tabular-nums ${isActive ? "text-accent-cyan/70" : "text-text-muted"}`}>
+                {count}
+              </span>
             </button>
           );
         })}

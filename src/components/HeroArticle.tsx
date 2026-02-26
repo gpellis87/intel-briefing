@@ -6,15 +6,17 @@ import { ReliabilityMeter } from "./ReliabilityMeter";
 import { NewsBadge } from "./NewsBadge";
 import { ShareButton } from "./ShareButton";
 import { getBiasBorderColor, timeAgo, getRecencyBadge, estimateReadTime } from "@/lib/utils";
-import { ExternalLink, Clock, Flame, BookmarkPlus, BookmarkCheck, BookOpen } from "lucide-react";
+import { ExternalLink, Clock, Flame, BookmarkPlus, BookmarkCheck, BookOpen, Pin } from "lucide-react";
 import { useBookmarks } from "@/context/BookmarkContext";
 
 interface HeroArticleProps {
   article: EnrichedArticle;
   onMarkRead?: (id: string) => void;
+  pinned?: boolean;
+  onTogglePin?: () => void;
 }
 
-export function HeroArticle({ article, onMarkRead }: HeroArticleProps) {
+export function HeroArticle({ article, onMarkRead, pinned, onTogglePin }: HeroArticleProps) {
   const borderColor = getBiasBorderColor(article.bias);
   const { toggleBookmark, isBookmarked } = useBookmarks();
   const saved = isBookmarked(article.id);
@@ -62,6 +64,20 @@ export function HeroArticle({ article, onMarkRead }: HeroArticleProps) {
               <span className="text-xs">{timeAgo(article.publishedAt)}</span>
             </div>
             <div className="ml-auto flex items-center gap-1.5">
+              {onTogglePin && (
+                <button
+                  onClick={onTogglePin}
+                  className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                    pinned
+                      ? "text-amber-400 bg-amber-500/10 border border-amber-500/25"
+                      : "text-text-muted hover:text-text-primary hover:bg-surface-tertiary border border-border-primary"
+                  }`}
+                  title={pinned ? "Unpin story" : "Pin as top story"}
+                >
+                  <Pin size={12} className={pinned ? "fill-current" : ""} />
+                  <span>{pinned ? "Pinned" : "Pin"}</span>
+                </button>
+              )}
               <ShareButton
                 url={article.url}
                 title={article.title}

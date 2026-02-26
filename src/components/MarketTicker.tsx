@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { TrendingUp, TrendingDown } from "lucide-react";
+import Link from "next/link";
 
 interface MarketData {
   symbol: string;
@@ -37,31 +38,34 @@ export function MarketTicker() {
   return (
     <div className="bg-surface-secondary/30 border-b border-border-primary">
       <div className="max-w-[1600px] mx-auto px-4 sm:px-6">
-        <div className="flex items-center gap-4 py-1.5 overflow-x-auto scrollbar-none">
-          <span className="text-[9px] font-bold text-text-muted uppercase tracking-wider flex-shrink-0">
-            Markets
-          </span>
-          {markets.map((m) => {
-            const up = m.change >= 0;
-            return (
-              <div key={m.symbol} className="flex items-center gap-1.5 flex-shrink-0">
-                <span className="text-[11px] font-semibold text-text-secondary">
-                  {m.label}
-                </span>
-                <span className="text-[11px] font-bold text-text-primary tabular-nums">
-                  {m.label === "BTC"
-                    ? `$${m.price.toLocaleString()}`
-                    : m.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                </span>
-                <div className={`flex items-center gap-0.5 ${up ? "text-emerald-400" : "text-red-400"}`}>
-                  {up ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
-                  <span className="text-[10px] font-semibold tabular-nums">
-                    {up ? "+" : ""}{m.changePercent}%
+        <div className="py-2.5">
+          <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-2 items-stretch">
+            {markets.map((m) => {
+              const up = m.change >= 0;
+              return (
+                <Link
+                  key={m.symbol}
+                  href="/markets"
+                  className="rounded-xl border border-border-primary bg-surface-primary/40 hover:bg-surface-hover transition-colors px-3 py-2 flex flex-col items-center justify-center text-center"
+                >
+                  <span className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider">
+                    {m.label}
                   </span>
-                </div>
-              </div>
-            );
-          })}
+                  <span className="text-sm font-bold text-text-primary tabular-nums">
+                    {m.label === "BTC"
+                      ? `$${m.price.toLocaleString()}`
+                      : m.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                  </span>
+                  <div className={`flex items-center gap-1 ${up ? "text-emerald-400" : "text-red-400"}`}>
+                    {up ? <TrendingUp size={11} /> : <TrendingDown size={11} />}
+                    <span className="text-[11px] font-semibold tabular-nums">
+                      {up ? "+" : ""}{m.changePercent}%
+                    </span>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
         </div>
       </div>
     </div>

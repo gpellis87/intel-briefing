@@ -448,16 +448,16 @@ export function Dashboard() {
         </div>
       )}
 
+      {/* News Ticker */}
+      {data?.articles && data.articles.length > 0 && !showBookmarks && !showLocalPrompt && (
+        <TickerBar articles={data.articles} />
+      )}
+
       {/* Market Ticker */}
       <MarketTicker />
 
       {/* Scores Ticker -- sports tab only */}
       {category === "sports" && <ScoresTicker />}
-
-      {/* News Ticker */}
-      {data?.articles && data.articles.length > 0 && !showBookmarks && !showLocalPrompt && (
-        <TickerBar articles={data.articles} />
-      )}
 
       {/* Main content with transition */}
       <main className={`max-w-[1600px] mx-auto px-4 sm:px-6 py-8 space-y-6 content-fade ${transitioning ? "transitioning" : ""}`}>

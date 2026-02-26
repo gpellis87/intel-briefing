@@ -39,21 +39,6 @@ export interface EnrichedArticle extends NewsArticle {
   sourceDomain: string;
 }
 
-export interface ArticlePair {
-  topic: string;
-  keywords: string[];
-  left: EnrichedArticle;
-  right: EnrichedArticle;
-  matchScore: number;
-  framingDifferences: FramingDifference[];
-}
-
-export interface FramingDifference {
-  category: string;
-  leftTerms: string[];
-  rightTerms: string[];
-}
-
 export type NewsCategory =
   | "general"
   | "politics"

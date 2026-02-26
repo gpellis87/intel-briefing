@@ -86,6 +86,14 @@ async function fetchSingleFeed(
   }
 }
 
+const MAX_AGE_MS = 48 * 60 * 60 * 1000; // 48 hours
+
+function isRecent(publishedAt: string): boolean {
+  const pubDate = new Date(publishedAt);
+  if (isNaN(pubDate.getTime())) return false;
+  return Date.now() - pubDate.getTime() < MAX_AGE_MS;
+}
+
 export async function fetchRSSFeeds(
   category: NewsCategory
 ): Promise<NewsArticle[]> {
@@ -101,7 +109,11 @@ export async function fetchRSSFeeds(
   const allArticles: NewsArticle[] = [];
   for (const result of results) {
     if (result.status === "fulfilled") {
-      allArticles.push(...result.value);
+      for (const article of result.value) {
+        if (isRecent(article.publishedAt)) {
+          allArticles.push(article);
+        }
+      }
     }
   }
 

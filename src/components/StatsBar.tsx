@@ -1,7 +1,7 @@
 "use client";
 
 import type { EnrichedArticle } from "@/types";
-import { Activity, Shield } from "lucide-react";
+import { Activity, Shield, BarChart3 } from "lucide-react";
 
 interface StatsBarProps {
   articles: EnrichedArticle[];
@@ -10,11 +10,10 @@ interface StatsBarProps {
 
 export function StatsBar({ articles, total }: StatsBarProps) {
   const leftCount = articles.filter((a) => a.biasDirection === "left").length;
-  const centerCount = articles.filter(
-    (a) => a.biasDirection === "center"
-  ).length;
+  const centerCount = articles.filter((a) => a.biasDirection === "center").length;
   const rightCount = articles.filter((a) => a.biasDirection === "right").length;
   const unknownCount = articles.filter((a) => a.biasDirection === null).length;
+  const totalBias = leftCount + centerCount + rightCount + unknownCount;
 
   const avgReliability =
     articles.filter((a) => a.reliability !== null).length > 0
@@ -26,43 +25,58 @@ export function StatsBar({ articles, total }: StatsBarProps) {
         )
       : 0;
 
+  const biasSegments = [
+    { count: leftCount, color: "bg-blue-500", label: "Left" },
+    { count: centerCount, color: "bg-gray-400", label: "Center" },
+    { count: rightCount, color: "bg-red-500", label: "Right" },
+    { count: unknownCount, color: "bg-surface-elevated", label: "Unrated" },
+  ];
+
   return (
-    <div className="flex items-center gap-4 overflow-x-auto py-2 px-1 text-xs">
-      <div className="flex items-center gap-1.5 text-gray-400">
-        <Activity size={12} className="text-accent-cyan" />
-        <span className="font-semibold text-gray-300">{total}</span>
-        <span>Sources</span>
+    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 py-3 px-1 text-xs animate-fade-in">
+      <div className="flex items-center gap-4 flex-wrap">
+        <div className="flex items-center gap-1.5 text-text-secondary">
+          <Activity size={13} className="text-accent-cyan" />
+          <span className="font-semibold text-text-primary">{total}</span>
+          <span>Sources</span>
+        </div>
+
+        <div className="w-px h-4 bg-border-primary hidden sm:block" />
+
+        <div className="flex items-center gap-1.5 text-text-secondary">
+          <Shield size={13} className="text-emerald-500" />
+          <span>Reliability:</span>
+          <span className="font-semibold text-text-primary">{avgReliability}</span>
+        </div>
       </div>
 
-      <div className="w-px h-4 bg-navy-700" />
+      <div className="w-px h-4 bg-border-primary hidden sm:block" />
 
+      {/* Bias spectrum bar */}
       <div className="flex items-center gap-3">
-        <div className="flex items-center gap-1">
-          <div className="w-2 h-2 rounded-full bg-blue-500" />
-          <span className="text-gray-400">{leftCount} Left</span>
+        <BarChart3 size={13} className="text-text-muted flex-shrink-0" />
+        <div className="flex items-center gap-1.5 h-2 w-32 sm:w-48 rounded-full overflow-hidden bg-surface-tertiary">
+          {biasSegments
+            .filter((s) => s.count > 0)
+            .map((s) => (
+              <div
+                key={s.label}
+                className={`h-full ${s.color} transition-all duration-500`}
+                style={{ width: `${(s.count / totalBias) * 100}%` }}
+                title={`${s.label}: ${s.count}`}
+              />
+            ))}
         </div>
-        <div className="flex items-center gap-1">
-          <div className="w-2 h-2 rounded-full bg-gray-500" />
-          <span className="text-gray-400">{centerCount} Center</span>
+        <div className="flex items-center gap-3 text-text-muted">
+          {biasSegments
+            .filter((s) => s.count > 0)
+            .map((s) => (
+              <div key={s.label} className="flex items-center gap-1">
+                <span className={`w-1.5 h-1.5 rounded-full ${s.color}`} />
+                <span>{s.count}</span>
+              </div>
+            ))}
         </div>
-        <div className="flex items-center gap-1">
-          <div className="w-2 h-2 rounded-full bg-red-500" />
-          <span className="text-gray-400">{rightCount} Right</span>
-        </div>
-        {unknownCount > 0 && (
-          <div className="flex items-center gap-1">
-            <div className="w-2 h-2 rounded-full bg-navy-600" />
-            <span className="text-gray-500">{unknownCount} Unrated</span>
-          </div>
-        )}
-      </div>
-
-      <div className="w-px h-4 bg-navy-700" />
-
-      <div className="flex items-center gap-1.5 text-gray-400">
-        <Shield size={12} className="text-emerald-500" />
-        <span>Avg Reliability:</span>
-        <span className="font-semibold text-gray-300">{avgReliability}</span>
       </div>
     </div>
   );

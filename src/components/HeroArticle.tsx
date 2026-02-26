@@ -3,8 +3,9 @@
 import type { EnrichedArticle } from "@/types";
 import { BiasBadge } from "./BiasBadge";
 import { ReliabilityMeter } from "./ReliabilityMeter";
-import { getBiasBorderColor, getBiasGlow, timeAgo } from "@/lib/utils";
-import { ExternalLink, Clock, Flame } from "lucide-react";
+import { getBiasBorderColor, timeAgo } from "@/lib/utils";
+import { ExternalLink, Clock, Flame, Bookmark } from "lucide-react";
+import { useBookmarks } from "@/context/BookmarkContext";
 
 interface HeroArticleProps {
   article: EnrichedArticle;
@@ -12,76 +13,93 @@ interface HeroArticleProps {
 
 export function HeroArticle({ article }: HeroArticleProps) {
   const borderColor = getBiasBorderColor(article.bias);
-  const glow = getBiasGlow(article.bias);
+  const { toggleBookmark, isBookmarked } = useBookmarks();
+  const saved = isBookmarked(article.id);
 
   return (
-    <a
-      href={article.url}
-      target="_blank"
-      rel="noopener noreferrer"
-      className={`group relative block bg-navy-900/80 backdrop-blur-sm rounded-2xl border ${borderColor} ${glow} hover:border-opacity-70 transition-all duration-300 overflow-hidden`}
+    <div
+      className={`group relative bg-surface-secondary rounded-2xl border ${borderColor} hover:border-border-secondary transition-all duration-300 overflow-hidden animate-fade-up`}
     >
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-0">
-        {/* Image side */}
         {article.urlToImage && (
-          <div className="relative h-64 lg:h-full min-h-[280px] overflow-hidden">
+          <div className="relative h-64 lg:h-full min-h-[300px] overflow-hidden">
             <img
               src={article.urlToImage}
               alt=""
-              className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+              className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.03]"
+              onError={(e) => {
+                (e.target as HTMLImageElement).style.display = "none";
+              }}
             />
-            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-transparent to-navy-900/80 hidden lg:block" />
-            <div className="absolute inset-0 bg-gradient-to-t from-navy-900 via-navy-900/30 to-transparent lg:hidden" />
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-transparent to-surface-secondary/90 hidden lg:block" />
+            <div className="absolute inset-0 bg-gradient-to-t from-surface-secondary via-surface-secondary/30 to-transparent lg:hidden" />
           </div>
         )}
 
-        {/* Content side */}
-        <div className="flex flex-col justify-center p-6 lg:p-8 gap-4">
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-red-500/15 border border-red-500/25">
-              <Flame size={11} className="text-red-400" />
-              <span className="text-[10px] font-bold text-red-400 uppercase tracking-widest">
+        <div className="flex flex-col justify-center p-7 lg:p-10 gap-5">
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-500/12 border border-red-500/20">
+              <Flame size={12} className="text-red-400" />
+              <span className="text-[11px] font-bold text-red-400 uppercase tracking-widest">
                 Top Story
               </span>
             </div>
-            <div className="flex items-center gap-1 text-gray-500">
-              <Clock size={11} />
+            <div className="flex items-center gap-1 text-text-muted">
+              <Clock size={12} />
               <span className="text-xs">{timeAgo(article.publishedAt)}</span>
             </div>
+            <button
+              onClick={() => toggleBookmark(article.id)}
+              className={`ml-auto p-1.5 rounded-lg transition-all ${
+                saved
+                  ? "text-accent-cyan bg-accent-cyan/10"
+                  : "text-text-muted hover:text-text-primary hover:bg-surface-tertiary"
+              }`}
+              aria-label={saved ? "Remove bookmark" : "Bookmark article"}
+            >
+              <Bookmark size={16} fill={saved ? "currentColor" : "none"} />
+            </button>
           </div>
 
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <span className="text-sm font-semibold text-gray-300">
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-sm font-semibold text-text-secondary">
               {article.source.name}
             </span>
             {article.bias && <BiasBadge bias={article.bias} size="md" />}
           </div>
 
           {article.reliability !== null && (
-            <ReliabilityMeter
-              score={article.reliability}
-              showLabel
-              size="md"
-            />
+            <ReliabilityMeter score={article.reliability} showLabel size="md" />
           )}
 
-          <h2 className="text-xl sm:text-2xl lg:text-[28px] font-bold text-gray-50 leading-snug group-hover:text-accent-cyan transition-colors">
-            {article.title}
-          </h2>
+          <a
+            href={article.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group/link"
+          >
+            <h2 className="text-xl sm:text-2xl lg:text-[28px] font-bold text-text-primary leading-snug group-hover/link:text-accent-cyan transition-colors">
+              {article.title}
+            </h2>
+          </a>
 
           {article.description && (
-            <p className="text-base text-gray-400 leading-relaxed line-clamp-3">
+            <p className="text-base text-text-secondary leading-relaxed line-clamp-3">
               {article.description}
             </p>
           )}
 
-          <div className="flex items-center gap-1.5 text-sm text-gray-500 group-hover:text-accent-cyan transition-colors mt-1">
-            <ExternalLink size={13} />
+          <a
+            href={article.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 text-sm text-text-muted hover:text-accent-cyan transition-colors mt-1"
+          >
+            <ExternalLink size={14} />
             <span>Read full article on {article.sourceDomain}</span>
-          </div>
+          </a>
         </div>
       </div>
-    </a>
+    </div>
   );
 }

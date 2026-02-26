@@ -18,25 +18,29 @@ export function ReliabilityMeter({
   showLabel = false,
   size = "sm",
 }: ReliabilityMeterProps) {
-  const barWidth = size === "sm" ? "w-12" : "w-20";
-  const barHeight = size === "sm" ? "h-1" : "h-1.5";
-  const iconSize = size === "sm" ? 10 : 14;
+  const barWidth = size === "sm" ? "w-14" : "w-24";
+  const barHeight = size === "sm" ? "h-1.5" : "h-2";
+  const iconSize = size === "sm" ? 11 : 14;
 
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex items-center gap-2">
       <Shield size={iconSize} className={getReliabilityColor(score)} />
-      <div className={`${barWidth} ${barHeight} bg-navy-700 rounded-full overflow-hidden`}>
+      <div
+        className={`${barWidth} ${barHeight} bg-surface-tertiary rounded-full overflow-hidden`}
+      >
         <div
-          className={`h-full rounded-full transition-all ${getReliabilityBarColor(score)}`}
+          className={`h-full rounded-full transition-all duration-500 ${getReliabilityBarColor(score)}`}
           style={{ width: `${score}%` }}
         />
       </div>
       {showLabel && (
-        <span className={`text-[10px] ${getReliabilityColor(score)} font-medium`}>
+        <span
+          className={`text-[10px] ${getReliabilityColor(score)} font-medium`}
+        >
           {getReliabilityLabel(score)}
         </span>
       )}
-      <span className="text-[10px] text-gray-500 tabular-nums">{score}</span>
+      <span className="text-[10px] text-text-muted tabular-nums">{score}</span>
     </div>
   );
 }

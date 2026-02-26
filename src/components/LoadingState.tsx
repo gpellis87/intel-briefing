@@ -2,25 +2,48 @@
 
 export function LoadingState() {
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+    <div className="space-y-8 animate-fade-in">
+      {/* Hero skeleton */}
+      <div className="bg-surface-secondary rounded-2xl border border-border-primary overflow-hidden animate-pulse">
+        <div className="grid grid-cols-1 lg:grid-cols-2">
+          <div className="h-64 lg:h-80 bg-surface-tertiary" />
+          <div className="p-8 space-y-4">
+            <div className="flex gap-3">
+              <div className="h-6 w-24 bg-surface-tertiary rounded-full" />
+              <div className="h-6 w-16 bg-surface-tertiary rounded-full" />
+            </div>
+            <div className="space-y-3 pt-2">
+              <div className="h-7 w-full bg-surface-tertiary rounded-lg" />
+              <div className="h-7 w-4/5 bg-surface-tertiary rounded-lg" />
+            </div>
+            <div className="space-y-2 pt-2">
+              <div className="h-4 w-full bg-surface-tertiary/60 rounded" />
+              <div className="h-4 w-3/4 bg-surface-tertiary/60 rounded" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Grid skeleton */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
         {Array.from({ length: 8 }).map((_, i) => (
           <div
             key={i}
-            className="bg-navy-900/80 rounded-xl border border-navy-700 overflow-hidden animate-pulse"
+            className="bg-surface-secondary rounded-2xl border border-border-primary overflow-hidden animate-pulse"
+            style={{ animationDelay: `${i * 60}ms` }}
           >
-            <div className="h-40 bg-navy-800" />
-            <div className="p-4 space-y-3">
+            <div className="h-44 bg-surface-tertiary" />
+            <div className="p-5 space-y-3">
               <div className="flex items-center gap-2">
-                <div className="h-3 w-20 bg-navy-700 rounded" />
-                <div className="h-4 w-12 bg-navy-700 rounded-full" />
+                <div className="h-3 w-20 bg-surface-tertiary rounded" />
+                <div className="h-4 w-12 bg-surface-tertiary rounded-full" />
               </div>
               <div className="space-y-2">
-                <div className="h-4 w-full bg-navy-700 rounded" />
-                <div className="h-4 w-3/4 bg-navy-700 rounded" />
+                <div className="h-4 w-full bg-surface-tertiary rounded" />
+                <div className="h-4 w-3/4 bg-surface-tertiary rounded" />
               </div>
-              <div className="h-3 w-full bg-navy-800 rounded" />
-              <div className="h-3 w-2/3 bg-navy-800 rounded" />
+              <div className="h-3 w-full bg-surface-tertiary/60 rounded" />
+              <div className="h-3 w-2/3 bg-surface-tertiary/60 rounded" />
             </div>
           </div>
         ))}

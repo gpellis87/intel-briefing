@@ -220,14 +220,17 @@ export async function fetchNews(
 
   const allArticles: NewsArticle[] = [];
   const seenUrls = new Set<string>();
+  const maxAge = 48 * 60 * 60 * 1000;
 
   function addArticles(articles: NewsArticle[] | null) {
     if (!articles) return;
     for (const a of articles) {
-      if (a.title && a.title !== "[Removed]" && a.url && !seenUrls.has(a.url)) {
-        seenUrls.add(a.url);
-        allArticles.push(a);
-      }
+      if (!a.title || a.title === "[Removed]" || !a.url) continue;
+      if (seenUrls.has(a.url)) continue;
+      const pubTime = new Date(a.publishedAt).getTime();
+      if (isNaN(pubTime) || Date.now() - pubTime > maxAge) continue;
+      seenUrls.add(a.url);
+      allArticles.push(a);
     }
   }
 

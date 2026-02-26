@@ -9,6 +9,13 @@ import { getBiasBorderColor, timeAgo, getRecencyBadge, estimateReadTime } from "
 import { ExternalLink, Clock, BookmarkPlus, BookmarkCheck, BookOpen } from "lucide-react";
 import { useBookmarks } from "@/context/BookmarkContext";
 
+function getGradientForBias(bias: string | null): string {
+  if (!bias) return "from-slate-700/40 to-slate-800/60";
+  if (bias.includes("left")) return "from-blue-800/30 to-slate-900/60";
+  if (bias.includes("right")) return "from-red-800/30 to-slate-900/60";
+  return "from-gray-700/30 to-slate-800/60";
+}
+
 interface ArticleCardProps {
   article: EnrichedArticle;
   compact?: boolean;
@@ -41,23 +48,38 @@ export function ArticleCard({
     toggleBookmark(article);
   };
 
+  const sourceInitial = (article.source.name || "?")[0].toUpperCase();
+
   return (
     <article
       data-article-index={index}
-      className={`group relative flex flex-col bg-surface-secondary rounded-2xl border ${borderColor} hover:border-border-secondary hover:shadow-lg transition-all duration-300 overflow-hidden ${
+      className={`group relative flex flex-col bg-surface-secondary rounded-2xl border ${borderColor} hover:border-border-secondary transition-all duration-300 overflow-hidden card-hover-lift ${
         isFocused ? "keyboard-focus" : ""
       } ${isRead ? "article-read" : ""}`}
     >
-      {article.urlToImage && !compact && (
+      {!compact && (
         <div className="relative h-44 overflow-hidden">
-          <img
-            src={article.urlToImage}
-            alt=""
-            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = "none";
-            }}
-          />
+          {article.urlToImage ? (
+            <img
+              src={article.urlToImage}
+              alt=""
+              className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+              onError={(e) => {
+                (e.target as HTMLImageElement).style.display = "none";
+                const fallback = (e.target as HTMLImageElement).nextElementSibling;
+                if (fallback) (fallback as HTMLElement).style.display = "flex";
+              }}
+            />
+          ) : null}
+          <div
+            className={`w-full h-full bg-gradient-to-br ${getGradientForBias(article.bias)} items-center justify-center image-fallback-gradient ${
+              article.urlToImage ? "hidden" : "flex"
+            }`}
+          >
+            <span className="text-4xl font-bold text-text-muted/30 select-none">
+              {sourceInitial}
+            </span>
+          </div>
           <div className="absolute inset-0 bg-gradient-to-t from-surface-secondary via-transparent to-transparent" />
 
           <button
@@ -96,7 +118,7 @@ export function ArticleCard({
               {article.source.name}
             </span>
             {article.bias && <BiasBadge bias={article.bias} />}
-            {!article.urlToImage && recency && <NewsBadge badge={recency} />}
+            {compact && recency && <NewsBadge badge={recency} />}
           </div>
           <div className="flex items-center gap-2 text-text-muted flex-shrink-0">
             <div className="flex items-center gap-1">
@@ -122,8 +144,8 @@ export function ArticleCard({
           onClick={handleClick}
         >
           <h3
-            className={`font-semibold leading-snug text-text-primary group-hover/link:text-accent-cyan transition-colors ${
-              compact ? "text-sm line-clamp-2" : "text-[15px] line-clamp-3"
+            className={`font-semibold text-text-primary group-hover/link:text-accent-cyan transition-colors ${
+              compact ? "text-sm leading-snug line-clamp-2" : "text-base leading-[1.4] line-clamp-3"
             }`}
           >
             {article.title}
@@ -154,7 +176,7 @@ export function ArticleCard({
               source={article.source.name}
               size="sm"
             />
-            {!article.urlToImage && (
+            {compact && (
               <button
                 onClick={handleSave}
                 className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium transition-all ${

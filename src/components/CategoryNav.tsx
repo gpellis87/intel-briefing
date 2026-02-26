@@ -42,7 +42,7 @@ export function CategoryNav({ activeCategory, onCategoryChange }: CategoryNavPro
   };
 
   return (
-    <nav className="relative flex items-center gap-1 py-2">
+    <nav className="relative flex items-center gap-1 py-1">
       {canScrollLeft && (
         <button
           onClick={() => scroll("left")}
@@ -55,7 +55,7 @@ export function CategoryNav({ activeCategory, onCategoryChange }: CategoryNavPro
       <div
         ref={scrollRef}
         onScroll={checkScroll}
-        className="flex items-center gap-1.5 overflow-x-auto scrollbar-none scroll-smooth px-1"
+        className="flex items-center gap-0.5 overflow-x-auto scrollbar-none scroll-smooth px-1"
       >
         {categories.map((cat) => {
           const Icon = iconMap[cat.icon];
@@ -65,10 +65,10 @@ export function CategoryNav({ activeCategory, onCategoryChange }: CategoryNavPro
             <button
               key={cat.id}
               onClick={() => onCategoryChange(cat.id)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all duration-200 ${
+              className={`category-underline flex items-center gap-2 px-4 py-2.5 text-sm font-medium whitespace-nowrap transition-all duration-200 ${
                 isActive
-                  ? "bg-accent-blue/15 text-accent-cyan border border-accent-blue/25 shadow-sm"
-                  : "text-text-muted hover:text-text-primary hover:bg-surface-tertiary border border-transparent"
+                  ? "active text-accent-cyan"
+                  : "text-text-muted hover:text-text-primary"
               }`}
             >
               {Icon && <Icon size={15} />}

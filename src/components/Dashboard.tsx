@@ -10,7 +10,6 @@ import { ArticleListItem } from "./ArticleListItem";
 import { HeroArticle } from "./HeroArticle";
 import { LoadingState } from "./LoadingState";
 import { ThemePicker } from "./ThemePicker";
-import { DensityPicker } from "./DensityPicker";
 import { SearchBar } from "./SearchBar";
 import { BiasFilter } from "./BiasFilter";
 import { TimeFilter, passesTimeFilter, type TimeRange } from "./TimeFilter";
@@ -27,19 +26,17 @@ import { ScoresTicker } from "./ScoresTicker";
 import { MarketTicker } from "./MarketTicker";
 import { WeatherWidget } from "./WeatherWidget";
 import { WelcomeBanner } from "./WelcomeBanner";
-import { Tooltip } from "./Tooltip";
+import { ToolbarMenu } from "./ToolbarMenu";
+import { ScrollProgress } from "./ScrollProgress";
 import { KeywordAlerts } from "./KeywordAlerts";
 import { ReadingHistory } from "./ReadingHistory";
-import { PopularBadge } from "./PopularBadge";
 import { clusterArticles, type StoryClusterData } from "@/lib/story-clustering";
 import { useReadTracker } from "@/hooks/useReadTracker";
 import { useKeyboardNav } from "@/hooks/useKeyboardNav";
 import { useKeywordAlerts } from "@/hooks/useKeywordAlerts";
 import {
   ShieldCheck, RefreshCw, Crosshair, Layers, Bell,
-  BookmarkCheck, CheckCheck, Eye, EyeOff, Keyboard,
-  Filter, Newspaper, ChevronDown, Radar, History,
-  BarChart3,
+  BookmarkCheck, ChevronDown, BarChart3, Info,
 } from "lucide-react";
 import { useBookmarks } from "@/context/BookmarkContext";
 import Link from "next/link";
@@ -48,6 +45,7 @@ interface FeedData {
   articles: EnrichedArticle[];
   total: number;
   category: string;
+  fallbackCity?: string;
 }
 
 type BiasFilterValue = "all" | BiasDirection;
@@ -87,7 +85,7 @@ export function Dashboard() {
   const [previewArticle, setPreviewArticle] = useState<EnrichedArticle | null>(null);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [pinnedHeroId, setPinnedHeroId] = useState<string | null>(null);
-  const [popularIds, setPopularIds] = useState<Set<string>>(new Set());
+  const [transitioning, setTransitioning] = useState(false);
   const previousArticleIds = useRef<Set<string>>(new Set());
   const heroRef = useRef<{ id: string; setAt: number } | null>(null);
 
@@ -97,22 +95,6 @@ export function Dashboard() {
   const { excluded, toggleSource, clearAll: clearSourceFilter, excludedCount, isExcluded } = useSourceFilter();
   const { location, setLocation } = useLocalLocation();
   const { keywords, addKeyword, removeKeyword, matchesAlert, count: alertCount } = useKeywordAlerts();
-
-  // Fetch popular articles for boosting
-  useEffect(() => {
-    const fetchPopular = async () => {
-      try {
-        const res = await fetch("/api/popular");
-        const data = await res.json();
-        if (data.popular?.length > 0) {
-          setPopularIds(new Set(data.popular.map((p: { articleId: string }) => p.articleId)));
-        }
-      } catch { /* silent */ }
-    };
-    fetchPopular();
-    const interval = setInterval(fetchPopular, 5 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, []);
 
   const trackClick = useCallback(async (articleId: string) => {
     try {
@@ -201,7 +183,22 @@ export function Dashboard() {
     setVisibleCount(PAGE_SIZE);
   }, [category, biasFilter, search, timeFilter, showBookmarks, hideRead, clustered]);
 
-  // Compute source counts for articles (for breaking badge)
+  const handleCategoryChange = useCallback((c: NewsCategory) => {
+    setTransitioning(true);
+    setTimeout(() => {
+      setCategory(c);
+      setShowBookmarks(false);
+      setSearch("");
+      setBiasFilter("all");
+      setTimeFilter("all");
+      setHideRead(false);
+      setClustered(false);
+      setPinnedHeroId(null);
+      heroRef.current = null;
+      setTransitioning(false);
+    }, 150);
+  }, []);
+
   const sourceCountMap = useMemo(() => {
     if (!data?.articles) return new Map<string, number>();
     const clusters = clusterArticles(data.articles);
@@ -254,23 +251,19 @@ export function Dashboard() {
     return articles;
   }, [data, biasFilter, search, showBookmarks, getSavedArticles, hideRead, isRead, timeFilter, excludedCount, isExcluded]);
 
-  // Hero article with 30-min persistence + pin support
   const heroArticle = useMemo(() => {
     if (showBookmarks || filteredArticles.length === 0 || clustered) return null;
 
-    // If pinned, find that article
     if (pinnedHeroId) {
       const pinned = filteredArticles.find((a) => a.id === pinnedHeroId);
       if (pinned) return pinned;
       setPinnedHeroId(null);
     }
 
-    // Check if current hero is still valid and within persistence window
     if (heroRef.current) {
       const elapsed = Date.now() - heroRef.current.setAt;
       const currentHero = filteredArticles.find((a) => a.id === heroRef.current!.id);
       if (currentHero && elapsed < HERO_PERSIST_MS) {
-        // Only override if a new story has 3+ sources (truly bigger news)
         const candidate = category === "sports"
           ? filteredArticles[0]
           : filteredArticles.find((a) => !isSportsSource(a)) || filteredArticles[0];
@@ -350,29 +343,27 @@ export function Dashboard() {
   const showLocalPrompt = category === "local" && !location;
   const history = getHistory();
 
-  const Divider = () => (
-    <div className="h-5 border-l border-border-primary mx-0.5 hidden sm:block" />
-  );
-
   return (
     <div className="min-h-screen bg-surface-primary transition-colors duration-300">
+      <ScrollProgress />
+
       {/* Header */}
-      <header className="sticky top-0 z-40 bg-surface-primary/90 backdrop-blur-xl border-b border-border-primary">
+      <header className="glass-header sticky top-0 z-40 bg-surface-primary/70 backdrop-blur-2xl backdrop-saturate-150 border-b border-border-primary">
         <div className="max-w-[1600px] mx-auto px-4 sm:px-6">
-          <div className="flex items-center justify-between h-16">
+          <div className="flex items-center justify-between h-14">
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-2.5">
-                <Crosshair size={20} className="text-accent-cyan" />
-                <h1 className="text-lg font-bold font-[var(--font-family-mono)] text-text-primary tracking-wider uppercase hidden sm:block">
+                <Crosshair size={18} className="text-accent-cyan" />
+                <h1 className="text-base font-bold font-[var(--font-family-mono)] text-text-primary tracking-wider uppercase hidden sm:block">
                   Intel Briefing
                 </h1>
-                <h1 className="text-lg font-bold font-[var(--font-family-mono)] text-text-primary tracking-wider uppercase sm:hidden">
+                <h1 className="text-base font-bold font-[var(--font-family-mono)] text-text-primary tracking-wider uppercase sm:hidden">
                   INTL
                 </h1>
               </div>
-              <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20">
-                <ShieldCheck size={11} className="text-emerald-400" />
-                <span className="text-[10px] font-semibold text-emerald-400 uppercase tracking-wider">
+              <div className="hidden lg:flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
+                <ShieldCheck size={10} className="text-emerald-400" />
+                <span className="text-[9px] font-semibold text-emerald-400 uppercase tracking-wider">
                   Multi-Source
                 </span>
               </div>
@@ -386,122 +377,40 @@ export function Dashboard() {
               <WeatherWidget />
             </div>
 
-            <div className="flex items-center gap-1 sm:gap-1.5">
+            <div className="flex items-center gap-1.5">
               <SearchBar value={search} onChange={setSearch} />
 
-              {/* Reading group */}
-              <Tooltip text="View saved articles">
-                <button
-                  onClick={() => setShowBookmarks(!showBookmarks)}
-                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all border ${
-                    showBookmarks
-                      ? "text-accent-cyan bg-accent-cyan/10 border-accent-cyan/25"
-                      : "text-text-muted hover:text-accent-cyan hover:bg-surface-tertiary border-border-primary"
-                  }`}
-                >
-                  <BookmarkCheck size={13} fill={showBookmarks ? "currentColor" : "none"} />
-                  <span className="hidden sm:inline">
-                    {bookmarkCount > 0 ? `Saved (${bookmarkCount})` : "Saved"}
-                  </span>
-                </button>
-              </Tooltip>
+              <button
+                onClick={() => setShowBookmarks(!showBookmarks)}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all border ${
+                  showBookmarks
+                    ? "text-accent-cyan bg-accent-cyan/10 border-accent-cyan/25"
+                    : "text-text-muted hover:text-accent-cyan hover:bg-surface-tertiary border-border-primary"
+                }`}
+              >
+                <BookmarkCheck size={13} fill={showBookmarks ? "currentColor" : "none"} />
+                <span className="hidden sm:inline">
+                  {bookmarkCount > 0 ? `Saved (${bookmarkCount})` : "Saved"}
+                </span>
+              </button>
 
-              <Tooltip text="Reading history">
-                <button
-                  onClick={() => setShowHistory(true)}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-text-muted hover:text-accent-cyan hover:bg-surface-tertiary transition-all border border-border-primary"
-                >
-                  <History size={13} />
-                  <span className="hidden lg:inline">History</span>
-                </button>
-              </Tooltip>
-
-              <Tooltip text={hideRead ? "Show read articles" : "Hide articles you've read"}>
-                <button
-                  onClick={() => setHideRead(!hideRead)}
-                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all border ${
-                    hideRead
-                      ? "text-accent-cyan bg-accent-cyan/10 border-accent-cyan/25"
-                      : "text-text-muted hover:text-accent-cyan hover:bg-surface-tertiary border-border-primary"
-                  }`}
-                >
-                  {hideRead ? <EyeOff size={13} /> : <Eye size={13} />}
-                  <span className="hidden sm:inline">{hideRead ? "Show Read" : "Hide Read"}</span>
-                </button>
-              </Tooltip>
-
-              <Tooltip text="Mark all articles as read">
-                <button
-                  onClick={handleMarkAllRead}
-                  className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-text-muted hover:text-accent-cyan hover:bg-surface-tertiary transition-all border border-border-primary"
-                >
-                  <CheckCheck size={13} />
-                  <span className="hidden md:inline">Mark Read</span>
-                </button>
-              </Tooltip>
-
-              <Divider />
-
-              {/* Filter group */}
-              <Tooltip text="Filter which news sources appear">
-                <button
-                  onClick={() => setShowSources(true)}
-                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all border ${
-                    excludedCount > 0
-                      ? "text-accent-cyan bg-accent-cyan/10 border-accent-cyan/25"
-                      : "text-text-muted hover:text-accent-cyan hover:bg-surface-tertiary border-border-primary"
-                  }`}
-                >
-                  <Filter size={13} />
-                  <span className="hidden sm:inline">
-                    Sources{excludedCount > 0 ? ` (${excludedCount})` : ""}
-                  </span>
-                </button>
-              </Tooltip>
-
-              <Tooltip text="Set keyword alerts for topics you care about">
-                <button
-                  onClick={() => setShowAlerts(true)}
-                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all border ${
-                    alertCount > 0
-                      ? "text-amber-400 bg-amber-500/10 border-amber-500/25"
-                      : "text-text-muted hover:text-accent-cyan hover:bg-surface-tertiary border-border-primary"
-                  }`}
-                >
-                  <Radar size={13} />
-                  <span className="hidden lg:inline">
-                    Alerts{alertCount > 0 ? ` (${alertCount})` : ""}
-                  </span>
-                </button>
-              </Tooltip>
-
-              <DensityPicker />
               <ThemePicker />
 
-              <Divider />
-
-              {/* Extras group */}
-              <Tooltip text="Summary across all categories">
-                <button
-                  onClick={() => setShowDigest(true)}
-                  className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-text-muted hover:text-accent-cyan hover:bg-surface-tertiary transition-all border border-border-primary"
-                >
-                  <Newspaper size={13} />
-                  <span className="hidden lg:inline">Briefing</span>
-                </button>
-              </Tooltip>
-
-              <Tooltip text="Keyboard shortcuts">
-                <button
-                  onClick={() => setShowShortcuts(true)}
-                  className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-text-muted hover:text-accent-cyan hover:bg-surface-tertiary transition-all border border-border-primary"
-                >
-                  <Keyboard size={13} />
-                </button>
-              </Tooltip>
+              <ToolbarMenu
+                hideRead={hideRead}
+                onToggleHideRead={() => setHideRead(!hideRead)}
+                onMarkAllRead={handleMarkAllRead}
+                onShowSources={() => setShowSources(true)}
+                excludedCount={excludedCount}
+                onShowAlerts={() => setShowAlerts(true)}
+                alertCount={alertCount}
+                onShowDigest={() => setShowDigest(true)}
+                onShowHistory={() => setShowHistory(true)}
+                onShowShortcuts={() => setShowShortcuts(true)}
+              />
 
               {lastUpdated && (
-                <span className="text-[10px] text-text-muted hidden xl:block">
+                <span className="text-[10px] text-text-muted hidden xl:block tabular-nums">
                   {lastUpdated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                 </span>
               )}
@@ -515,31 +424,20 @@ export function Dashboard() {
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-text-muted hover:text-accent-cyan hover:bg-surface-tertiary transition-all border border-border-primary disabled:opacity-50"
               >
                 <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
-                <span className="hidden sm:inline">Refresh</span>
               </button>
             </div>
           </div>
 
           <CategoryNav
             activeCategory={category}
-            onCategoryChange={(c) => {
-              setCategory(c);
-              setShowBookmarks(false);
-              setSearch("");
-              setBiasFilter("all");
-              setTimeFilter("all");
-              setHideRead(false);
-              setClustered(false);
-              setPinnedHeroId(null);
-              heroRef.current = null;
-            }}
+            onCategoryChange={handleCategoryChange}
           />
         </div>
       </header>
 
       {/* New articles toast */}
       {newArticleCount > 0 && (
-        <div className="sticky top-[calc(7rem)] z-30 flex justify-center pointer-events-none">
+        <div className="sticky top-[calc(6.5rem)] z-30 flex justify-center pointer-events-none">
           <button
             onClick={applyNewArticles}
             className="pointer-events-auto flex items-center gap-2 px-4 py-2.5 rounded-full bg-accent-cyan text-surface-primary font-medium text-sm shadow-lg hover:shadow-xl transition-all hover:scale-105 animate-slide-down"
@@ -553,22 +451,32 @@ export function Dashboard() {
       {/* Market Ticker */}
       <MarketTicker />
 
-      {/* Scores Ticker */}
-      <ScoresTicker />
+      {/* Scores Ticker -- sports tab only */}
+      {category === "sports" && <ScoresTicker />}
 
       {/* News Ticker */}
       {data?.articles && data.articles.length > 0 && !showBookmarks && !showLocalPrompt && (
         <TickerBar articles={data.articles} />
       )}
 
-      {/* Main content */}
-      <main className="max-w-[1600px] mx-auto px-4 sm:px-6 py-8 space-y-6">
+      {/* Main content with transition */}
+      <main className={`max-w-[1600px] mx-auto px-4 sm:px-6 py-8 space-y-6 content-fade ${transitioning ? "transitioning" : ""}`}>
         {/* Welcome Banner */}
         <WelcomeBanner />
 
         {/* Local News Prompt */}
         {showLocalPrompt && (
           <LocalNewsPrompt onLocationSet={setLocation} />
+        )}
+
+        {/* Local news fallback banner */}
+        {data?.fallbackCity && category === "local" && location && (
+          <div className="flex items-center gap-2.5 px-4 py-3 rounded-xl bg-amber-500/8 border border-amber-500/15 animate-fade-in">
+            <Info size={14} className="text-amber-400 flex-shrink-0" />
+            <p className="text-xs text-text-secondary">
+              Showing news near <span className="font-semibold text-text-primary">{data.fallbackCity}</span> (closest coverage to {location.city})
+            </p>
+          </div>
         )}
 
         {/* Stats + Filters */}
@@ -586,7 +494,6 @@ export function Dashboard() {
                     ? "text-accent-cyan bg-accent-cyan/10 border-accent-cyan/25"
                     : "text-text-muted hover:text-text-secondary border-border-primary"
                 }`}
-                title={clustered ? "Show all articles" : "Group related stories"}
               >
                 <Layers size={12} />
                 <span className="hidden sm:inline">Group Stories</span>
@@ -756,7 +663,7 @@ export function Dashboard() {
                     : category === "local"
                       ? "Try a different location or check back later"
                       : hideRead
-                        ? "Toggle Hide Read to show all articles"
+                        ? "Toggle Hide Read in the menu to show all articles"
                         : search
                           ? "Try a different search term"
                           : "Try refreshing or selecting a different category"}
@@ -788,13 +695,6 @@ export function Dashboard() {
                 <BarChart3 size={11} />
                 <span>Analytics</span>
               </Link>
-              <button
-                onClick={() => setShowShortcuts(true)}
-                className="hidden sm:inline-flex items-center gap-1 text-text-muted hover:text-accent-cyan transition-colors"
-              >
-                <Keyboard size={11} />
-                <span>Shortcuts</span>
-              </button>
             </div>
           </div>
         </div>

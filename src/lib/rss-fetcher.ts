@@ -54,6 +54,26 @@ function extractImage(item: Record<string, unknown>): string | null {
   return null;
 }
 
+const SKIP_URL_PATTERNS = [
+  /\/live-news\//i,
+  /\/live-updates\//i,
+  /\/live-blog\//i,
+  /liveblog/i,
+];
+
+function shouldSkipUrl(url: string): boolean {
+  return SKIP_URL_PATTERNS.some((p) => p.test(url));
+}
+
+function parseAndValidateDate(isoDate?: string, pubDate?: string): string | null {
+  const raw = isoDate || pubDate;
+  if (!raw) return null;
+  const d = new Date(raw);
+  if (isNaN(d.getTime())) return null;
+  if (d.getTime() > Date.now() + 60_000) return null;
+  return d.toISOString();
+}
+
 async function fetchSingleFeed(
   source: FeedSource
 ): Promise<NewsArticle[]> {
@@ -61,10 +81,19 @@ async function fetchSingleFeed(
     const feed = await parser.parseURL(source.url);
     if (!feed.items || feed.items.length === 0) return [];
 
-    return feed.items.slice(0, 10).map((item) => {
+    const articles: NewsArticle[] = [];
+
+    for (const item of feed.items.slice(0, 10)) {
       const title = item.title || "";
       const url = item.link || "";
-      return {
+
+      if (!title || !url) continue;
+      if (shouldSkipUrl(url)) continue;
+
+      const publishedAt = parseAndValidateDate(item.isoDate, item.pubDate);
+      if (!publishedAt) continue;
+
+      articles.push({
         id: generateArticleId({ title, url }),
         title,
         description:
@@ -74,12 +103,14 @@ async function fetchSingleFeed(
           null,
         url,
         urlToImage: extractImage(item as unknown as Record<string, unknown>) || null,
-        publishedAt: item.isoDate || item.pubDate || new Date().toISOString(),
+        publishedAt,
         source: { id: null, name: source.name },
         author: item.creator || (item as unknown as Record<string, string>).author || null,
         content: null,
-      };
-    });
+      });
+    }
+
+    return articles;
   } catch (err) {
     console.error(`[RSS] Failed to fetch ${source.name}: ${(err as Error).message}`);
     return [];

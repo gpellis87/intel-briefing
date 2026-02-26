@@ -87,6 +87,32 @@
   --th-scrollbar-thumb: #c8cad0;
 }
 
+/* ── Density Modes ───────────────────────────────────────────────── */
+
+[data-density="compact"] {
+  font-size: 14px;
+  --density-card-padding: 0.75rem;
+  --density-gap: 0.75rem;
+  --density-title-size: 0.825rem;
+  --density-img-height: 9rem;
+}
+
+[data-density="comfortable"] {
+  font-size: 16px;
+  --density-card-padding: 1.25rem;
+  --density-gap: 1.25rem;
+  --density-title-size: 0.9375rem;
+  --density-img-height: 11rem;
+}
+
+[data-density="spacious"] {
+  font-size: 18px;
+  --density-card-padding: 1.5rem;
+  --density-gap: 1.5rem;
+  --density-title-size: 1.0625rem;
+  --density-img-height: 13rem;
+}
+
 /* ── Base Styles ─────────────────────────────────────────────────── */
 
 @layer base {
@@ -133,7 +159,7 @@
   }
 
   .ticker-scroll {
-    animation: ticker 60s linear infinite;
+    animation: ticker 30s linear infinite;
   }
   @keyframes ticker {
     0% { transform: translateX(0); }
@@ -201,6 +227,19 @@
   .stagger-children > *:nth-child(11) { animation-delay: 400ms; }
   .stagger-children > *:nth-child(12) { animation-delay: 440ms; }
   .stagger-children > *:nth-child(n+13) { animation-delay: 480ms; }
+
+  /* Slide in from right (preview panel) */
+  @keyframes slide-in-right {
+    from {
+      transform: translateX(100%);
+    }
+    to {
+      transform: translateX(0);
+    }
+  }
+  .animate-slide-in-right {
+    animation: slide-in-right 0.3s ease-out both;
+  }
 
   /* Breaking badge pulse */
   @keyframes badge-pulse {

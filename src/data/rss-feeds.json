@@ -102,7 +102,14 @@
     { "name": "BBC Sport", "url": "https://feeds.bbci.co.uk/sport/rss.xml", "domain": "bbc.com" },
     { "name": "The Athletic", "url": "https://theathletic.com/feeds/rss/news/", "domain": "theathletic.com" },
     { "name": "Sports Illustrated", "url": "https://www.si.com/rss/si_topstories.rss", "domain": "si.com" },
-    { "name": "Deadspin", "url": "https://deadspin.com/rss", "domain": "deadspin.com" }
+    { "name": "Deadspin", "url": "https://deadspin.com/rss", "domain": "deadspin.com" },
+    { "name": "Motorsport.com - F1", "url": "https://www.motorsport.com/rss/f1/news/", "domain": "motorsport.com" },
+    { "name": "Motorsport.com - NASCAR", "url": "https://www.motorsport.com/rss/nascar-cup/news/", "domain": "motorsport.com" },
+    { "name": "Motorsport.com - IndyCar", "url": "https://www.motorsport.com/rss/indycar/news/", "domain": "motorsport.com" },
+    { "name": "Motorsport.com - All", "url": "https://www.motorsport.com/rss/all/news/", "domain": "motorsport.com" },
+    { "name": "Crash.net - F1", "url": "https://www.crash.net/rss/f1", "domain": "crash.net" },
+    { "name": "Crash.net - NASCAR", "url": "https://www.crash.net/rss/nascar", "domain": "crash.net" },
+    { "name": "RaceFans", "url": "https://www.racefans.net/feed/", "domain": "racefans.net" }
   ],
   "entertainment": [
     { "name": "Variety", "url": "https://variety.com/feed/", "domain": "variety.com" },

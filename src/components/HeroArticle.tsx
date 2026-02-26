@@ -5,8 +5,8 @@ import { BiasBadge } from "./BiasBadge";
 import { ReliabilityMeter } from "./ReliabilityMeter";
 import { NewsBadge } from "./NewsBadge";
 import { ShareButton } from "./ShareButton";
-import { getBiasBorderColor, timeAgo, getRecencyBadge } from "@/lib/utils";
-import { ExternalLink, Clock, Flame, BookmarkPlus, BookmarkCheck } from "lucide-react";
+import { getBiasBorderColor, timeAgo, getRecencyBadge, estimateReadTime } from "@/lib/utils";
+import { ExternalLink, Clock, Flame, BookmarkPlus, BookmarkCheck, BookOpen } from "lucide-react";
 import { useBookmarks } from "@/context/BookmarkContext";
 
 interface HeroArticleProps {
@@ -53,6 +53,10 @@ export function HeroArticle({ article, onMarkRead }: HeroArticleProps) {
               </span>
             </div>
             {recency && <NewsBadge badge={recency} />}
+            <div className="flex items-center gap-1 text-text-muted">
+              <BookOpen size={12} />
+              <span className="text-xs">{estimateReadTime(article.description)}</span>
+            </div>
             <div className="flex items-center gap-1 text-text-muted">
               <Clock size={12} />
               <span className="text-xs">{timeAgo(article.publishedAt)}</span>

@@ -5,8 +5,8 @@ import { BiasBadge } from "./BiasBadge";
 import { ReliabilityMeter } from "./ReliabilityMeter";
 import { NewsBadge } from "./NewsBadge";
 import { ShareButton } from "./ShareButton";
-import { getBiasBorderColor, timeAgo, getRecencyBadge } from "@/lib/utils";
-import { ExternalLink, Clock, BookmarkPlus, BookmarkCheck } from "lucide-react";
+import { getBiasBorderColor, timeAgo, getRecencyBadge, estimateReadTime } from "@/lib/utils";
+import { ExternalLink, Clock, BookmarkPlus, BookmarkCheck, BookOpen } from "lucide-react";
 import { useBookmarks } from "@/context/BookmarkContext";
 
 interface ArticleCardProps {
@@ -98,9 +98,15 @@ export function ArticleCard({
             {article.bias && <BiasBadge bias={article.bias} />}
             {!article.urlToImage && recency && <NewsBadge badge={recency} />}
           </div>
-          <div className="flex items-center gap-1 text-text-muted flex-shrink-0">
-            <Clock size={10} />
-            <span className="text-[10px]">{timeAgo(article.publishedAt)}</span>
+          <div className="flex items-center gap-2 text-text-muted flex-shrink-0">
+            <div className="flex items-center gap-1">
+              <BookOpen size={10} />
+              <span className="text-[10px]">{estimateReadTime(article.description)}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <Clock size={10} />
+              <span className="text-[10px]">{timeAgo(article.publishedAt)}</span>
+            </div>
           </div>
         </div>
 

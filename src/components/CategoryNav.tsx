@@ -5,13 +5,13 @@ import { categories } from "@/lib/categories";
 import type { NewsCategory } from "@/types";
 import {
   Newspaper, Landmark, Cpu, TrendingUp,
-  FlaskConical, HeartPulse, Trophy, Film,
+  FlaskConical, HeartPulse, Trophy, Film, MapPin,
   ChevronLeft, ChevronRight,
 } from "lucide-react";
 
 const iconMap: Record<string, React.ComponentType<{ size?: number }>> = {
   Newspaper, Landmark, Cpu, TrendingUp,
-  FlaskConical, HeartPulse, Trophy, Film,
+  FlaskConical, HeartPulse, Trophy, Film, MapPin,
 };
 
 interface CategoryNavProps {

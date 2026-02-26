@@ -124,6 +124,13 @@ export function formatPublishTime(dateString: string): string {
   });
 }
 
+export function estimateReadTime(text: string | null): string {
+  if (!text) return "1 min";
+  const words = text.trim().split(/\s+/).length;
+  const minutes = Math.max(1, Math.ceil(words / 200));
+  return `${minutes} min`;
+}
+
 export type RecencyBadge = "breaking" | "just-in" | null;
 
 export function getRecencyBadge(publishedAt: string): RecencyBadge {

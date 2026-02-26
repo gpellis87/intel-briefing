@@ -49,4 +49,9 @@ export const categories: NewsCategoryConfig[] = [
     icon: "Film",
     newsApiCategory: "entertainment",
   },
+  {
+    id: "local",
+    label: "Local",
+    icon: "MapPin",
+  },
 ];

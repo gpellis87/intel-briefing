@@ -47,7 +47,8 @@ export type NewsCategory =
   | "science"
   | "sports"
   | "health"
-  | "entertainment";
+  | "entertainment"
+  | "local";
 
 export interface NewsCategoryConfig {
   id: NewsCategory;

@@ -6,26 +6,30 @@ import { CategoryNav } from "./CategoryNav";
 import { TickerBar } from "./TickerBar";
 import { StatsBar } from "./StatsBar";
 import { ArticleCard } from "./ArticleCard";
+import { ArticleListItem } from "./ArticleListItem";
 import { HeroArticle } from "./HeroArticle";
 import { LoadingState } from "./LoadingState";
 import { ThemePicker } from "./ThemePicker";
+import { DensityPicker } from "./DensityPicker";
 import { SearchBar } from "./SearchBar";
 import { BiasFilter } from "./BiasFilter";
+import { TimeFilter, passesTimeFilter, type TimeRange } from "./TimeFilter";
+import { ViewToggle, useViewMode, type ViewMode } from "./ViewToggle";
 import { TrendingTopics } from "./TrendingTopics";
 import { KeyboardShortcutsModal } from "./KeyboardShortcutsModal";
+import { BackToTop } from "./BackToTop";
+import { ArticlePreview } from "./ArticlePreview";
+import { SourceDirectory, useSourceFilter } from "./SourceDirectory";
+import { StoryCluster } from "./StoryCluster";
+import { DailyDigest } from "./DailyDigest";
+import { LocalNewsPrompt, LocationBadge, useLocalLocation } from "./LocalNews";
+import { clusterArticles, type StoryClusterData } from "@/lib/story-clustering";
 import { useReadTracker } from "@/hooks/useReadTracker";
 import { useKeyboardNav } from "@/hooks/useKeyboardNav";
 import {
-  ShieldCheck,
-  RefreshCw,
-  Crosshair,
-  Layers,
-  Bell,
-  BookmarkCheck,
-  CheckCheck,
-  Eye,
-  EyeOff,
-  Keyboard,
+  ShieldCheck, RefreshCw, Crosshair, Layers, Bell,
+  BookmarkCheck, CheckCheck, Eye, EyeOff, Keyboard,
+  Filter, Newspaper, ChevronDown,
 } from "lucide-react";
 import { useBookmarks } from "@/context/BookmarkContext";
 
@@ -38,11 +42,12 @@ interface FeedData {
 type BiasFilterValue = "all" | BiasDirection;
 
 const AUTO_REFRESH_MS = 5 * 60 * 1000;
+const PAGE_SIZE = 20;
 
 const SPORTS_DOMAINS = new Set([
   "espn.com", "cbssports.com", "sports.yahoo.com", "bleacherreport.com",
   "foxsports.com", "nbcsports.com", "theathletic.com", "si.com",
-  "deadspin.com",
+  "deadspin.com", "motorsport.com", "crash.net", "racefans.net",
 ]);
 
 function isSportsSource(article: EnrichedArticle): boolean {
@@ -57,20 +62,43 @@ export function Dashboard() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [search, setSearch] = useState("");
   const [biasFilter, setBiasFilter] = useState<BiasFilterValue>("all");
+  const [timeFilter, setTimeFilter] = useState<TimeRange>("all");
   const [newArticleCount, setNewArticleCount] = useState(0);
   const [showBookmarks, setShowBookmarks] = useState(false);
   const [hideRead, setHideRead] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [showSources, setShowSources] = useState(false);
+  const [showDigest, setShowDigest] = useState(false);
+  const [clustered, setClustered] = useState(false);
+  const [previewArticle, setPreviewArticle] = useState<EnrichedArticle | null>(null);
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const previousArticleIds = useRef<Set<string>>(new Set());
+
+  const { viewMode, setViewMode } = useViewMode();
   const { isBookmarked, toggleBookmark, getSavedArticles, count: bookmarkCount } = useBookmarks();
   const { isRead, markRead, markAllRead } = useReadTracker();
+  const { excluded, toggleSource, clearAll: clearSourceFilter, excludedCount, isExcluded } = useSourceFilter();
+  const { location, setLocation } = useLocalLocation();
 
   const fetchData = useCallback(
     async (silent = false) => {
       if (!silent) setLoading(true);
       try {
-        const res = await fetch(`/api/news?category=${category}`);
-        const json: FeedData = await res.json();
+        let json: FeedData;
+
+        if (category === "local") {
+          if (!location) {
+            setLoading(false);
+            return;
+          }
+          const res = await fetch(
+            `/api/local-news?city=${encodeURIComponent(location.city)}&state=${encodeURIComponent(location.state)}`
+          );
+          json = await res.json();
+        } else {
+          const res = await fetch(`/api/news?category=${category}`);
+          json = await res.json();
+        }
 
         if (silent && data) {
           const currentIds = new Set(data.articles.map((a) => a.id));
@@ -80,9 +108,7 @@ export function Dashboard() {
           }
         } else {
           setData(json);
-          previousArticleIds.current = new Set(
-            json.articles.map((a) => a.id)
-          );
+          previousArticleIds.current = new Set(json.articles.map((a) => a.id));
           setNewArticleCount(0);
         }
 
@@ -93,7 +119,7 @@ export function Dashboard() {
         setLoading(false);
       }
     },
-    [category, data]
+    [category, data, location]
   );
 
   const applyNewArticles = useCallback(async () => {
@@ -113,43 +139,49 @@ export function Dashboard() {
   }, [category]);
 
   useEffect(() => {
+    if (category === "local" && !location) {
+      setData(null);
+      setLoading(false);
+      return;
+    }
     fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [category]);
+  }, [category, location]);
 
   useEffect(() => {
     const interval = setInterval(() => fetchData(true), AUTO_REFRESH_MS);
     return () => clearInterval(interval);
   }, [fetchData]);
 
-  const filteredArticles = useMemo(() => {
-    if (showBookmarks) {
-      let articles = getSavedArticles();
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [category, biasFilter, search, timeFilter, showBookmarks, hideRead, clustered]);
 
-      if (biasFilter !== "all") {
-        articles = articles.filter((a) => a.biasDirection === biasFilter);
-      }
-      if (search.trim()) {
-        const q = search.toLowerCase();
-        articles = articles.filter(
-          (a) =>
-            a.title.toLowerCase().includes(q) ||
-            a.source.name.toLowerCase().includes(q) ||
-            a.description?.toLowerCase().includes(q)
-        );
-      }
-      return articles;
+  const filteredArticles = useMemo(() => {
+    let articles: EnrichedArticle[];
+
+    if (showBookmarks) {
+      articles = getSavedArticles();
+    } else if (!data?.articles) {
+      return [];
+    } else {
+      articles = data.articles;
     }
 
-    if (!data?.articles) return [];
-    let articles = data.articles;
-
-    if (hideRead) {
+    if (hideRead && !showBookmarks) {
       articles = articles.filter((a) => !isRead(a.id));
     }
 
     if (biasFilter !== "all") {
       articles = articles.filter((a) => a.biasDirection === biasFilter);
+    }
+
+    if (timeFilter !== "all") {
+      articles = articles.filter((a) => passesTimeFilter(a.publishedAt, timeFilter));
+    }
+
+    if (excludedCount > 0) {
+      articles = articles.filter((a) => !isExcluded(a.sourceDomain));
     }
 
     if (search.trim()) {
@@ -163,20 +195,31 @@ export function Dashboard() {
     }
 
     return articles;
-  }, [data, biasFilter, search, showBookmarks, getSavedArticles, hideRead, isRead]);
+  }, [data, biasFilter, search, showBookmarks, getSavedArticles, hideRead, isRead, timeFilter, excludedCount, isExcluded]);
 
   const heroArticle = useMemo(() => {
-    if (showBookmarks || filteredArticles.length === 0) return null;
+    if (showBookmarks || filteredArticles.length === 0 || clustered) return null;
     if (category === "sports") return filteredArticles[0];
     const nonSports = filteredArticles.find((a) => !isSportsSource(a));
     return nonSports || filteredArticles[0];
-  }, [filteredArticles, showBookmarks, category]);
+  }, [filteredArticles, showBookmarks, category, clustered]);
 
-  const gridArticles = useMemo(() => {
+  const afterHeroArticles = useMemo(() => {
     if (showBookmarks) return filteredArticles;
     if (!heroArticle) return filteredArticles;
     return filteredArticles.filter((a) => a.id !== heroArticle.id);
   }, [filteredArticles, heroArticle, showBookmarks]);
+
+  const clusters = useMemo((): StoryClusterData[] => {
+    if (!clustered) return [];
+    return clusterArticles(afterHeroArticles);
+  }, [afterHeroArticles, clustered]);
+
+  const paginatedArticles = useMemo(() => {
+    return afterHeroArticles.slice(0, visibleCount);
+  }, [afterHeroArticles, visibleCount]);
+
+  const hasMore = afterHeroArticles.length > visibleCount;
 
   const allTitles = useMemo(
     () => (data?.articles || []).map((a) => a.title),
@@ -199,19 +242,21 @@ export function Dashboard() {
 
   const handleKeyboardBookmark = useCallback(
     (id: string) => {
-      const article = gridArticles.find((a) => a.id === id);
+      const article = paginatedArticles.find((a) => a.id === id);
       if (article) toggleBookmark(article);
     },
-    [gridArticles, toggleBookmark]
+    [paginatedArticles, toggleBookmark]
   );
 
   const { focusIndex } = useKeyboardNav({
-    articles: gridArticles,
+    articles: paginatedArticles,
     onOpenArticle: handleOpenArticle,
     onToggleBookmark: handleKeyboardBookmark,
     onShowHelp: useCallback(() => setShowShortcuts(true), []),
-    enabled: !showShortcuts,
+    enabled: !showShortcuts && !previewArticle && !showSources && !showDigest,
   });
+
+  const showLocalPrompt = category === "local" && !location;
 
   return (
     <div className="min-h-screen bg-surface-primary transition-colors duration-300">
@@ -235,6 +280,13 @@ export function Dashboard() {
                   Multi-Source
                 </span>
               </div>
+              {category === "local" && location && (
+                <LocationBadge
+                  city={location.city}
+                  state={location.state}
+                  onEdit={() => setLocation(null)}
+                />
+              )}
             </div>
 
             <div className="flex items-center gap-1.5 sm:gap-2">
@@ -247,7 +299,6 @@ export function Dashboard() {
                     ? "text-accent-cyan bg-accent-cyan/10 border-accent-cyan/25"
                     : "text-text-muted hover:text-accent-cyan hover:bg-surface-tertiary border-border-primary"
                 }`}
-                aria-label="Saved articles"
                 title="View saved articles"
               >
                 <BookmarkCheck size={13} fill={showBookmarks ? "currentColor" : "none"} />
@@ -263,7 +314,6 @@ export function Dashboard() {
                     ? "text-accent-cyan bg-accent-cyan/10 border-accent-cyan/25"
                     : "text-text-muted hover:text-accent-cyan hover:bg-surface-tertiary border-border-primary"
                 }`}
-                aria-label={hideRead ? "Show read articles" : "Hide read articles"}
                 title={hideRead ? "Show read articles" : "Hide read articles"}
               >
                 {hideRead ? <EyeOff size={13} /> : <Eye size={13} />}
@@ -272,18 +322,40 @@ export function Dashboard() {
               <button
                 onClick={handleMarkAllRead}
                 className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-text-muted hover:text-accent-cyan hover:bg-surface-tertiary transition-all border border-border-primary"
-                aria-label="Mark all read"
                 title="Mark all as read"
               >
                 <CheckCheck size={13} />
               </button>
 
+              <button
+                onClick={() => setShowSources(true)}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all border ${
+                  excludedCount > 0
+                    ? "text-accent-cyan bg-accent-cyan/10 border-accent-cyan/25"
+                    : "text-text-muted hover:text-accent-cyan hover:bg-surface-tertiary border-border-primary"
+                }`}
+                title="Source filter"
+              >
+                <Filter size={13} />
+                {excludedCount > 0 && (
+                  <span className="hidden sm:inline text-[10px]">{excludedCount}</span>
+                )}
+              </button>
+
+              <button
+                onClick={() => setShowDigest(true)}
+                className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-text-muted hover:text-accent-cyan hover:bg-surface-tertiary transition-all border border-border-primary"
+                title="Daily briefing"
+              >
+                <Newspaper size={13} />
+              </button>
+
+              <DensityPicker />
               <ThemePicker />
 
               <button
                 onClick={() => setShowShortcuts(true)}
                 className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-text-muted hover:text-accent-cyan hover:bg-surface-tertiary transition-all border border-border-primary"
-                aria-label="Keyboard shortcuts"
                 title="Keyboard shortcuts"
               >
                 <Keyboard size={13} />
@@ -291,10 +363,7 @@ export function Dashboard() {
 
               {lastUpdated && (
                 <span className="text-[10px] text-text-muted hidden lg:block">
-                  {lastUpdated.toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
+                  {lastUpdated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                 </span>
               )}
 
@@ -306,10 +375,7 @@ export function Dashboard() {
                 disabled={loading}
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-text-muted hover:text-accent-cyan hover:bg-surface-tertiary transition-all border border-border-primary disabled:opacity-50"
               >
-                <RefreshCw
-                  size={13}
-                  className={loading ? "animate-spin" : ""}
-                />
+                <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
                 <span className="hidden sm:inline">Refresh</span>
               </button>
             </div>
@@ -322,7 +388,9 @@ export function Dashboard() {
               setShowBookmarks(false);
               setSearch("");
               setBiasFilter("all");
+              setTimeFilter("all");
               setHideRead(false);
+              setClustered(false);
             }}
           />
         </div>
@@ -342,64 +410,165 @@ export function Dashboard() {
       )}
 
       {/* Ticker */}
-      {data?.articles && data.articles.length > 0 && !showBookmarks && (
+      {data?.articles && data.articles.length > 0 && !showBookmarks && !showLocalPrompt && (
         <TickerBar articles={data.articles} />
       )}
 
       {/* Main content */}
       <main className="max-w-[1600px] mx-auto px-4 sm:px-6 py-8 space-y-6">
+        {/* Local News Prompt */}
+        {showLocalPrompt && (
+          <LocalNewsPrompt onLocationSet={setLocation} />
+        )}
+
         {/* Stats + Filters */}
-        {data && !showBookmarks && (
-          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        {data && !showBookmarks && !showLocalPrompt && (
+          <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
             <StatsBar articles={data.articles || []} total={data.total} />
-            <BiasFilter value={biasFilter} onChange={setBiasFilter} />
+            <div className="flex items-center gap-2 flex-wrap">
+              <BiasFilter value={biasFilter} onChange={setBiasFilter} />
+              <TimeFilter value={timeFilter} onChange={setTimeFilter} />
+              <ViewToggle value={viewMode} onChange={setViewMode} />
+              <button
+                onClick={() => setClustered(!clustered)}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all border ${
+                  clustered
+                    ? "text-accent-cyan bg-accent-cyan/10 border-accent-cyan/25"
+                    : "text-text-muted hover:text-text-secondary border-border-primary"
+                }`}
+                title={clustered ? "Show all articles" : "Group related stories"}
+              >
+                <Layers size={12} />
+                <span className="hidden sm:inline">Cluster</span>
+              </button>
+            </div>
           </div>
         )}
 
         {/* Trending Topics */}
-        {data && !showBookmarks && allTitles.length > 0 && (
-          <TrendingTopics
-            titles={allTitles}
-            onTopicClick={setSearch}
-            activeSearch={search}
-          />
+        {data && !showBookmarks && !showLocalPrompt && allTitles.length > 0 && (
+          <TrendingTopics titles={allTitles} onTopicClick={setSearch} activeSearch={search} />
         )}
 
         {loading && <LoadingState />}
 
-        {!loading && (
+        {!loading && !showLocalPrompt && (
           <>
             {heroArticle && (
               <HeroArticle article={heroArticle} onMarkRead={markRead} />
             )}
 
-            {gridArticles.length > 0 && (
-              <section className="space-y-5">
-                <div className="flex items-center gap-2.5">
-                  <Layers size={15} className="text-accent-cyan" />
-                  <h2 className="text-sm font-bold font-[var(--font-family-mono)] text-accent-cyan uppercase tracking-wider">
-                    {showBookmarks ? "Saved Articles" : "Latest Coverage"}
-                  </h2>
-                  <span className="text-xs text-text-muted">
-                    ({gridArticles.length})
-                  </span>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 stagger-children">
-                  {gridArticles.map((article, i) => (
-                    <ArticleCard
-                      key={article.id}
-                      article={article}
-                      isRead={isRead(article.id)}
-                      onMarkRead={markRead}
-                      isFocused={focusIndex === i}
-                      index={i}
-                    />
-                  ))}
-                </div>
-              </section>
+            {clustered ? (
+              /* Clustered view */
+              clusters.length > 0 && (
+                <section className="space-y-5">
+                  <div className="flex items-center gap-2.5">
+                    <Layers size={15} className="text-accent-cyan" />
+                    <h2 className="text-sm font-bold font-[var(--font-family-mono)] text-accent-cyan uppercase tracking-wider">
+                      Story Clusters
+                    </h2>
+                    <span className="text-xs text-text-muted">
+                      ({clusters.length} stories from {afterHeroArticles.length} articles)
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 stagger-children">
+                    {clusters.slice(0, visibleCount).map((cluster) => (
+                      <StoryCluster
+                        key={cluster.id}
+                        cluster={cluster}
+                        onPreview={setPreviewArticle}
+                        onMarkRead={markRead}
+                        isRead={isRead}
+                      />
+                    ))}
+                  </div>
+                  {clusters.length > visibleCount && (
+                    <div className="flex justify-center pt-4">
+                      <button
+                        onClick={() => setVisibleCount((v) => v + PAGE_SIZE)}
+                        className="flex items-center gap-2 px-6 py-3 rounded-xl bg-surface-secondary border border-border-primary text-text-secondary hover:text-accent-cyan hover:border-accent-cyan/30 transition-all font-medium text-sm"
+                      >
+                        <ChevronDown size={16} />
+                        Load More ({clusters.length - visibleCount} remaining)
+                      </button>
+                    </div>
+                  )}
+                </section>
+              )
+            ) : (
+              /* Standard view */
+              paginatedArticles.length > 0 && (
+                <section className="space-y-5">
+                  <div className="flex items-center gap-2.5">
+                    <Layers size={15} className="text-accent-cyan" />
+                    <h2 className="text-sm font-bold font-[var(--font-family-mono)] text-accent-cyan uppercase tracking-wider">
+                      {showBookmarks ? "Saved Articles" : "Latest Coverage"}
+                    </h2>
+                    <span className="text-xs text-text-muted">
+                      ({afterHeroArticles.length})
+                    </span>
+                  </div>
+
+                  {viewMode === "grid" ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 stagger-children">
+                      {paginatedArticles.map((article, i) => (
+                        <ArticleCard
+                          key={article.id}
+                          article={article}
+                          isRead={isRead(article.id)}
+                          onMarkRead={markRead}
+                          isFocused={focusIndex === i}
+                          index={i}
+                        />
+                      ))}
+                    </div>
+                  ) : viewMode === "list" ? (
+                    <div className="space-y-1 stagger-children">
+                      {paginatedArticles.map((article, i) => (
+                        <ArticleListItem
+                          key={article.id}
+                          article={article}
+                          isRead={isRead(article.id)}
+                          onMarkRead={markRead}
+                          onPreview={setPreviewArticle}
+                          isFocused={focusIndex === i}
+                          index={i}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="space-y-0.5 stagger-children">
+                      {paginatedArticles.map((article, i) => (
+                        <ArticleListItem
+                          key={article.id}
+                          article={article}
+                          isRead={isRead(article.id)}
+                          onMarkRead={markRead}
+                          onPreview={setPreviewArticle}
+                          isFocused={focusIndex === i}
+                          index={i}
+                          showImage={false}
+                        />
+                      ))}
+                    </div>
+                  )}
+
+                  {hasMore && (
+                    <div className="flex justify-center pt-4">
+                      <button
+                        onClick={() => setVisibleCount((v) => v + PAGE_SIZE)}
+                        className="flex items-center gap-2 px-6 py-3 rounded-xl bg-surface-secondary border border-border-primary text-text-secondary hover:text-accent-cyan hover:border-accent-cyan/30 transition-all font-medium text-sm"
+                      >
+                        <ChevronDown size={16} />
+                        Load More ({afterHeroArticles.length - visibleCount} remaining)
+                      </button>
+                    </div>
+                  )}
+                </section>
+              )
             )}
 
-            {filteredArticles.length === 0 && (
+            {filteredArticles.length === 0 && !showLocalPrompt && (
               <div className="flex flex-col items-center justify-center py-24 text-text-muted animate-fade-in">
                 <Crosshair size={48} className="mb-4 text-surface-elevated" />
                 <p className="text-lg font-medium text-text-secondary">
@@ -452,11 +621,22 @@ export function Dashboard() {
         </div>
       </footer>
 
-      {/* Keyboard shortcuts modal */}
-      <KeyboardShortcutsModal
-        open={showShortcuts}
-        onClose={() => setShowShortcuts(false)}
+      {/* Overlays */}
+      <BackToTop />
+      <ArticlePreview article={previewArticle} onClose={() => setPreviewArticle(null)} onMarkRead={markRead} />
+      <SourceDirectory
+        open={showSources}
+        onClose={() => setShowSources(false)}
+        excluded={excluded}
+        onToggleSource={toggleSource}
+        onClearAll={clearSourceFilter}
+        onQuickFilter={(domains) => {
+          clearSourceFilter();
+          domains.forEach(toggleSource);
+        }}
       />
+      <DailyDigest open={showDigest} onClose={() => setShowDigest(false)} />
+      <KeyboardShortcutsModal open={showShortcuts} onClose={() => setShowShortcuts(false)} />
     </div>
   );
 }

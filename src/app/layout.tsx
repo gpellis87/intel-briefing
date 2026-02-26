@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Analytics } from "@vercel/analytics/next";
 import { ThemeProvider } from "@/context/ThemeContext";
 import { BookmarkProvider } from "@/context/BookmarkContext";
 import "./globals.css";
@@ -26,6 +27,7 @@ export default function RootLayout({
         <ThemeProvider>
           <BookmarkProvider>{children}</BookmarkProvider>
         </ThemeProvider>
+        <Analytics />
       </body>
     </html>
   );
